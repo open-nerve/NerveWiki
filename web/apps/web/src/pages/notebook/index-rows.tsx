@@ -2,8 +2,11 @@ import { observer } from "mobx-react-lite";
 import { Link } from "react-router";
 
 import { arrived } from "../../app/arrival";
+import { factsClass, groupTitleClass, lineLinkClass, lineTitleClass, stackedLinesClass } from "../../app/page-classes";
+import { cardClass } from "../../app/settings-page";
 import { formatDateTime } from "../../i18n/format";
 import { useT } from "../../i18n/i18n";
+import { cn } from "../../lib/cn";
 import type { NotebookIndexItem } from "../../services/linking.service";
 import { useStore } from "../../stores/context";
 import type { PageTreeStore } from "../../stores/page-tree.store";
@@ -61,31 +64,32 @@ export const IndexRows = observer(function IndexRows({
             ? t("index.untyped", { parent })
             : (group.items.find((item) => item.type !== null && item.type.trim() !== "")?.type ?? t("index.typed"));
         return (
-          <section key={group.key} className="space-y-2">
-            <h2 className="text-lg font-semibold break-words">{title}</h2>
-            <ul className="divide-y rounded-md border">
+          // Each group's title grey above its card, its rows a list's (M13/P5/S2, decision 925).
+          <section key={group.key}>
+            <h2 className={cn(groupTitleClass, "break-words")}>{title}</h2>
+            <ul className={cardClass}>
               {group.items.map((item) => (
-                <li key={item.page_id} className="space-y-2 p-4">
-                  <Link
-                    ref={(node) => linkRef(item.page_id, node)}
-                    to={`${home}/pages/${item.page_id}`}
-                    state={arrived}
-                    className="font-medium break-words underline underline-offset-4"
-                  >
-                    {item.title}
-                  </Link>
-                  {item.type !== null && item.type.trim() !== "" && (
-                    <p className="text-sm text-muted-foreground break-words">{item.type}</p>
-                  )}
+                <li key={item.page_id} className={cn(stackedLinesClass, "space-y-1.5")}>
+                  <p className={lineTitleClass}>
+                    <Link
+                      ref={(node) => linkRef(item.page_id, node)}
+                      to={`${home}/pages/${item.page_id}`}
+                      state={arrived}
+                      className={lineLinkClass}
+                    >
+                      {item.title}
+                    </Link>
+                  </p>
+                  {item.type !== null && item.type.trim() !== "" && <p className={factsClass}>{item.type}</p>}
                   {item.summary !== null && (
-                    <p className="break-words">
+                    <p className="text-sm break-words">
                       {item.summary}
                       {item.summary_cut && "…"}
                     </p>
                   )}
-                  {item.summary_cut && <p className="text-sm text-muted-foreground">{t("index.summaryCut")}</p>}
+                  {item.summary_cut && <p className={factsClass}>{t("index.summaryCut")}</p>}
                   {item.tags.length > 0 && (
-                    <p className="flex flex-wrap gap-2 text-sm">
+                    <p className={cn(factsClass, "flex flex-wrap gap-2")}>
                       {item.tags.map((tag) => (
                         <span key={tag} className="min-w-0 [overflow-wrap:anywhere]">
                           #{tag}
@@ -93,7 +97,7 @@ export const IndexRows = observer(function IndexRows({
                       ))}
                     </p>
                   )}
-                  <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                  <p className={cn(factsClass, "flex flex-wrap gap-x-4 gap-y-1")}>
                     <time dateTime={item.updated_at}>{formatDateTime(item.updated_at, locale)}</time>
                     <span>
                       {item.inbound_capped

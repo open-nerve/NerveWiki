@@ -3,6 +3,9 @@ import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
 import { arrived } from "../../app/arrival";
+import { filterBarClass, filterFieldClass, groupTitleClass, listColumnClass, noteClass } from "../../app/page-classes";
+import { cardClass, pageTitleClass } from "../../app/settings-page";
+import { cn } from "../../lib/cn";
 import { json, notebookJSON, problem } from "../../test/fakes";
 import { deferred } from "../../test/health-server";
 import {
@@ -580,4 +583,37 @@ test("a first page refused otherwise, as filtered, says why with Try again: not 
   fixture.answer = undefined;
   await user.click(screen.getByRole("button", { name: "Try again" }));
   expect(await screen.findByRole("list", { name: /./ })).toBeTruthy();
+});
+
+// M13/P5/S2 (decisions 925, 926): the directory is a list's page: its title the settings' kind, its filters a bar of
+// labelled fields, its notes grey, each group's title grey and 13px above its card of rows.
+test("the directory is a list's page: its title, its filters a bar, its notes, its groups' titles above their cards", async () => {
+  const fixture = indexServer();
+  fixture.value.types_complete = false;
+  renderApp(indexPath, fixture.server.app);
+  const title = await screen.findByRole("heading", { level: 1, name: "Directory" });
+  const region = await screen.findByRole("region", { name: "Directory pages" });
+
+  expect(title.className).toBe(pageTitleClass);
+  expect(title.closest("section")?.className).toBe(listColumnClass);
+  const type = screen.getByRole("combobox", { name: "Type" });
+  expect(type.parentElement?.className).toBe(filterFieldClass);
+  expect(type.parentElement?.parentElement?.className).toBe(filterBarClass);
+  expect(screen.getByRole("textbox", { name: "Tag" }).parentElement?.className).toBe(filterFieldClass);
+  expect(screen.getByText("Only some filterable types are shown.").className).toBe(noteClass);
+  const group = within(region).getAllByRole("heading", { level: 2 })[0] as HTMLElement;
+  expect(group.className).toBe(cn(groupTitleClass, "break-words"));
+  expect((group.nextElementSibling as HTMLElement).className).toBe(cardClass);
+});
+
+test.each([
+  { query: "", said: "This notebook has no pages yet." },
+  { query: "?tag=none", said: "No pages match these filters." },
+])("an empty list says why with an icon, filtered '$query'", async ({ query, said }) => {
+  const fixture = indexServer();
+  fixture.value.data = [];
+  renderApp(`${indexPath}${query}`, fixture.server.app);
+  const empty = await screen.findByText(said, { selector: "p" });
+  expect(empty.previousElementSibling?.getAttribute("aria-hidden")).toBe("true");
+  expect(empty.previousElementSibling?.querySelector("svg")).not.toBeNull();
 });

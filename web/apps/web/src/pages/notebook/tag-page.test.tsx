@@ -2,6 +2,8 @@ import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
+import { listColumnClass } from "../../app/page-classes";
+import { pageTitleClass } from "../../app/settings-page";
 import type { TreeNode } from "../../services/page.service";
 import { appLinks } from "../../reading/app-links";
 import { json, notebookJSON, problem } from "../../test/fakes";
@@ -130,3 +132,25 @@ test("a tag's list, changed for another tag's of as many pages, renders its firs
   expect(first).toBeGreaterThan(0);
   expect(first).toBeLessThanOrEqual(100);
 }, 30_000);
+
+// M13/P5/S2 (decision 925; S1's handoff): a tag's pages are a list's page, 720px as the others, not the main's width;
+// none, it says so with an icon.
+test("a tag's pages are a list's page: its column and title the lists'; none, said with an icon", async () => {
+  const server = pageServer();
+  server.tags.set("plan", [guide.id]);
+  renderApp(tagPath("plan"), server.app);
+  const title = await screen.findByRole("heading", { level: 1, name: "#plan" });
+
+  expect(title.className).toBe(pageTitleClass);
+  expect(title.closest("section")?.className).toBe(listColumnClass);
+  expect(title.closest("section")?.contains(await screen.findByRole("list", { name: "Pages tagged #plan" }))).toBe(
+    true
+  );
+});
+
+test("a tag no page has says so with an icon", async () => {
+  renderApp(tagPath("none"), pageServer().app);
+  const empty = await screen.findByText("No page has this tag.", { selector: "p" });
+  expect(empty.previousElementSibling?.getAttribute("aria-hidden")).toBe("true");
+  expect(empty.previousElementSibling?.querySelector("svg")).not.toBeNull();
+});

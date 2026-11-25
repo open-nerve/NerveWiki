@@ -130,8 +130,9 @@ export const docTitleClass =
 /**
  * EmptyHead is a page's head's row with nothing in it, as high as the head read: its trail one line of its type, and,
  * group given, its right group by group's classes, as the page read has it (decision 951; review B's P5S1B-F2-N1).
+ * The trash's preview has it where it has no trail: no longer in the trash, or past its time (M13/P5/S2).
  */
-function EmptyHead({ group }: { group?: string }) {
+export function EmptyHead({ group }: { group?: string }) {
   return (
     <div aria-hidden className={headRowClass}>
       <div className={cn(headCrumbsClass, "h-[1lh] text-compact")} />

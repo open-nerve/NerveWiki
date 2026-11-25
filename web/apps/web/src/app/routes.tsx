@@ -202,22 +202,28 @@ export const routes: RouteObject[] = [
                             },
                           },
                           {
-                            // Outside a page's shell, which has the pages of the tree alone (M8 design 4.5).
+                            // Outside a page's shell, which has the pages of the tree alone (M8 design 4.5); the
+                            // banner at the top of its column (M13/P5/S2, decision 915).
                             path: "trash",
+                            handle: { column: true },
                             lazy: async () => {
                               const { TrashPage } = await import("../pages/notebook/trash-page");
                               return { Component: TrashPage };
                             },
                           },
                           {
+                            // The banner at the top of the preview's column, each branch's (M13/P5/S2, decision 915).
                             path: "trash/:nodeId",
+                            handle: { column: true },
                             lazy: async () => {
                               const { TrashPreview } = await import("../pages/notebook/trash-preview");
                               return { Component: TrashPreview };
                             },
                           },
                           {
+                            // The banner at the top of the directory's column (M13/P5/S2, decision 915).
                             path: "index",
+                            handle: { column: true },
                             lazy: async () => {
                               const { IndexPage } = await import("../pages/notebook/index-page");
                               return { Component: IndexPage };
@@ -259,8 +265,10 @@ export const routes: RouteObject[] = [
                           },
                           {
                             // The tag is one segment, its '/' written %2F: a tag the page writes ending with '/'
-                            // keeps it (M6/P6 design 8).
+                            // keeps it (M6/P6 design 8). The banner at the top of its column (M13/P5/S2, decision
+                            // 915).
                             path: "tags/:tag",
+                            handle: { column: true },
                             lazy: async () => {
                               const { TagPage } = await import("../pages/notebook/tag-page");
                               return { Component: TagPage };

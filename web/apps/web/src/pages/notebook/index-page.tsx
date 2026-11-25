@@ -1,3 +1,4 @@
+import { ListTree } from "lucide-react";
 import { observer } from "mobx-react-lite";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { Link, useLocation, useSearchParams } from "react-router";
@@ -5,10 +6,14 @@ import useSWR, { SWRConfig } from "swr";
 import useSWRInfinite from "swr/infinite";
 
 import { useArrivalFocus } from "../../app/arrival";
+import { ColumnTop } from "../../app/column-top";
 import { useDocumentTitle } from "../../app/document-title";
 import { NotLoaded } from "../../app/not-loaded";
+import { listColumnClass, noteClass } from "../../app/page-classes";
 import { errorText } from "../../app/problem-messages";
 import { onErrorRetry } from "../../app/retry";
+import { pageTitleClass } from "../../app/settings-page";
+import { EmptyState } from "../../components/empty-state";
 import { Alert } from "../../components/ui/alert";
 import { useT } from "../../i18n/i18n";
 import { ApiError } from "../../services/api";
@@ -58,17 +63,16 @@ export const IndexPage = observer(function IndexPage() {
     void setParams(query, { replace: true, preventScrollReset: true, state: location.state });
   }
   return (
-    <section className="space-y-4">
-      <h1 ref={heading} tabIndex={-1} className="text-2xl font-semibold outline-none">
+    <section className={listColumnClass}>
+      <ColumnTop />
+      <h1 ref={heading} tabIndex={-1} className={pageTitleClass}>
         {t("index.title")}
       </h1>
       {/* The types do not depend on the filter: the last read's stay choosable while the next is read. */}
       <IndexFilters filter={filter} catalogue={metadata?.first.types ?? []} choose={choose} />
-      {current !== undefined && !current.types_complete && (
-        <p className="text-muted-foreground">{t("index.partialTypes")}</p>
-      )}
+      {current !== undefined && !current.types_complete && <p className={noteClass}>{t("index.partialTypes")}</p>}
       {current !== undefined && current.unfilterable_type_pages > 0 && (
-        <p className="text-muted-foreground">
+        <p className={noteClass}>
           {current.unfilterable_type_pages === 1
             ? t("index.longTypesOne")
             : t("index.longTypes", { count: current.unfilterable_type_pages.toLocaleString(store.preferences.locale) })}
@@ -291,9 +295,9 @@ const IndexResults = observer(function IndexResults({
           <NotLoaded error={error} retry={() => void mutate()} />
         )
       ) : items.length === 0 ? (
-        <p className="text-muted-foreground">
+        <EmptyState icon={ListTree}>
           {t(filter.type === "" && filter.tag === "" ? "index.none" : "index.empty")}
-        </p>
+        </EmptyState>
       ) : (
         <IndexRows
           items={items}

@@ -3,7 +3,8 @@ import { expect, test } from "vitest";
 
 import { notebookJSON } from "../test/fakes";
 import { changesetId, created, wrote } from "../test/history-server";
-import { guide, pageServer } from "../test/page-server";
+import { indexPath, indexServer } from "../test/index-server";
+import { guide, notes, pageServer } from "../test/page-server";
 import { renderApp } from "../test/render";
 
 // M13/P5/S2 (decision 925, review B's P5B-I2): the lists' pages have one kind of row, page after page: its first line
@@ -58,6 +59,30 @@ const rows: [string, () => Promise<Row>, ((row: HTMLElement) => Promise<void>)?]
       server.log("one", { id: changesetId(9201), changes: [created(guide)] });
       renderApp(`${home}/history/${changesetId(9201)}`, server.app);
       return rowOf("Nodes of this change");
+    },
+  ],
+  [
+    "the trash's item",
+    async () => {
+      const server = pageServer();
+      server.trashNode(notes.id);
+      renderApp(`${home}/trash`, server.app);
+      return rowOf("Trash");
+    },
+    async (row) => {
+      // Its text takes the room Restore leaves, Restore on the right, below it on the right too (review B's P5B-M6).
+      const text = within(row).getByRole("link").closest("p")?.parentElement;
+      expect(classesOf(text)).toEqual(expect.arrayContaining(["min-w-0", "flex-1", "basis-56"]));
+      expect(classesOf(within(row).getByRole("button", { name: /^Restore/ }))).toContain("ms-auto");
+    },
+  ],
+  [
+    "the directory's page",
+    async () => {
+      renderApp(indexPath, indexServer().server.app);
+      const region = await screen.findByRole("region", { name: "Directory pages" });
+      const row = within(region).getAllByRole("listitem")[0] as HTMLElement;
+      return { row, link: within(row).getAllByRole("link")[0] as HTMLElement };
     },
   ],
 ];

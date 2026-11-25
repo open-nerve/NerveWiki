@@ -1,10 +1,15 @@
+import { Tag } from "lucide-react";
 import { observer } from "mobx-react-lite";
 import { useParams } from "react-router";
 import useSWR from "swr";
 
 import { useArrivalFocus } from "../../app/arrival";
+import { ColumnTop } from "../../app/column-top";
 import { useDocumentTitle } from "../../app/document-title";
 import { NotLoaded } from "../../app/not-loaded";
+import { listColumnClass } from "../../app/page-classes";
+import { pageTitleClass } from "../../app/settings-page";
+import { EmptyState } from "../../components/empty-state";
 import { useT } from "../../i18n/i18n";
 import { usePageTree } from "../../stores/context";
 import { inTreeOrder } from "../../stores/page-tree";
@@ -36,8 +41,10 @@ export const TagPage = observer(function TagPage() {
     index === undefined || tagged.data === undefined ? undefined : inTreeOrder(index, new Set(tagged.data));
   const home = `/${slug}/notebooks/${notebook.id}`;
   return (
-    <section className="space-y-4">
-      <h1 ref={heading} tabIndex={-1} className="text-2xl font-semibold break-words outline-none">
+    // A list's page, 720px as the others (M13/P5/S2, decision 925).
+    <section className={listColumnClass}>
+      <ColumnTop />
+      <h1 ref={heading} tabIndex={-1} className={pageTitleClass}>
         #{tag}
       </h1>
       {listed === undefined ? (
@@ -49,7 +56,7 @@ export const TagPage = observer(function TagPage() {
           }}
         />
       ) : listed.length === 0 ? (
-        <p className="text-muted-foreground">{t("tag.empty")}</p>
+        <EmptyState icon={Tag}>{t("tag.empty")}</EmptyState>
       ) : (
         <SubpageList
           // Another tag's list starts again from its first rows, though as many as this one's (M12/P4/S4 design 3.7).

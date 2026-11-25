@@ -16,8 +16,9 @@ import { goto } from "../../fixtures/navigation";
 import { addedNotebookMember } from "../../fixtures/notebook-members";
 import { notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook, getNotebook } from "../../fixtures/notebooks";
-import { createPage, listNodes, postPage, putContent, readContent } from "../../fixtures/pages";
+import { createPage, deleteNode, listNodes, postPage, putContent, readContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
+import { trashPath } from "../../fixtures/trash";
 import {
   bannerText,
   modeSection,
@@ -169,7 +170,7 @@ test("UP1 (MCP): while an admin's upgrade is under way, the initiator's agent wr
   ]);
 });
 
-test("UP1 (page): an admin starts the upgrade in the notebook's settings and lands on its page, its title focused, the banner above it; their other tab, its stream connected, gets the banner by the mode event and loses Edit, its focus going to the title without a scroll, without a reload, its reading view not written again, the paragraph it reads not moved; the page opened again, its tree on its way, the banner where the page read has it at 1440, 1280, 1024, 768 and 375, a changeset's on its way where it read has it at 1440, 768 and 375; nothing is refused", async ({
+test("UP1 (page): an admin starts the upgrade in the notebook's settings and lands on its page, its title focused, the banner above it; their other tab, its stream connected, gets the banner by the mode event and loses Edit, its focus going to the title without a scroll, without a reload, its reading view not written again, the paragraph it reads not moved; the page opened again, its tree on its way, the banner where the page read has it at 1440, 1280, 1024, 768 and 375, a changeset's and a page's preview in the trash on their way where they read have it at 1440, 768 and 375; nothing is refused", async ({
   api,
   db,
   signedInPage,
@@ -182,6 +183,9 @@ test("UP1 (page): an admin starts the upgrade in the notebook's settings and lan
   const body = Array.from({ length: 80 }, (_, n) => `Paragraph ${n.toString()} of the plan.\n`).join("\n");
   const plan = await createPage(api, pat, notebook.id, "Plan", null, `# Plan\n\n${body}`);
   await createPage(api, pat, notebook.id, "Notes", plan.id, "# Notes\n");
+  // In the trash before the upgrade freezes the notebook: its preview's banner is measured at the end (M13/P5/S2).
+  const gone = await createPage(api, pat, notebook.id, "Gone", null, "# Gone\n");
+  expect((await deleteNode(api, pat, gone.id)).response.status).toBe(204);
   const page = await signedInPage(tokens);
   const tab = await anotherTab(page);
   const streams = followStreams(page.context());
@@ -289,6 +293,17 @@ test("UP1 (page): an admin starts the upgrade in the notebook's settings and lan
       { ...at.read, y: at.read.y - wrapped },
       `a changeset's banner read at ${String(width)}, its trail ${String(at.trail)} px high, as it was on its way`
     ).toEqual(at.loading);
+  }
+  // A page's preview in the trash, the item's read held, likewise, its trail alone (decision 951): "Field notes / Trash
+  // / Gone" is one line at each width, the banner where the preview read has it.
+  const gonePath = trashPath(workspace.slug, notebook.id, gone.id);
+  const item = `**/api/v0/nodes/${gone.id}/trash-item`;
+  for (const [width, at] of [
+    [1440, await bannerPlaces(tab, gonePath, item, 1440)],
+    [768, await bannerPlaces(tab, gonePath, item, 768)],
+    [375, await bannerPlaces(tab, gonePath, item, 375)],
+  ] as const) {
+    expect(at.read, `a preview's banner read at ${String(width)}, as it was on its way`).toEqual(at.loading);
   }
   expect(pageWatch.apiFailures).toEqual([]);
 });

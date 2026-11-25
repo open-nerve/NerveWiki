@@ -2,7 +2,18 @@ import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 
+import { arrived } from "../../app/arrival";
+import {
+  factsClass,
+  lineLinkClass,
+  lineTitleClass,
+  listColumnClass,
+  noteClass,
+  splitRowClass,
+} from "../../app/page-classes";
+import { cardClass, pageTitleClass } from "../../app/settings-page";
 import { eventHandlers } from "../../events/handlers";
+import { cn } from "../../lib/cn";
 import type { NotebookRole } from "../../services/notebook.service";
 import { eventServer, withEvents } from "../../test/event-server";
 import { json, notebookJSON, problem, workspaceJSON, type Answer } from "../../test/fakes";
@@ -1086,4 +1097,51 @@ test("back on the trash's list as a restore from the preview is out, the item's 
 
   await waitFor(() => expect(rows()).toHaveLength(2));
   expect(server.sent.filter((each) => each === "RESTORE Notes")).toHaveLength(1);
+});
+
+// M13/P5/S2 (decision 925): the trash is a list's page: its title the settings' kind, two notes under it, its items rows
+// of a card, each its text on the left, Restore, a small pill, on its right; empty, said with an icon.
+test("the trash is a list's page: its title, its notes, its items a card's rows of text and Restore; empty, said with an icon", async () => {
+  const { server } = trashed();
+  renderApp(trashPath, server.app);
+  const title = await screen.findByRole("heading", { level: 1, name: "Trash" });
+
+  expect(title.className).toBe(pageTitleClass);
+  expect(title.closest("section")?.className).toBe(listColumnClass);
+  expect(screen.getByText(/^Deleted pages and attachments/).className).toBe(noteClass);
+  expect(screen.getByText(/^Nothing here can be deleted for good/).className).toBe(noteClass);
+  expect(screen.getByRole("list", { name: "Trash" }).className).toBe(cardClass);
+  const [row] = rows() as HTMLElement[];
+  expect(row?.className).toBe(splitRowClass);
+  const link = within(row as HTMLElement).getByRole("link");
+  expect(link.className).toBe(lineLinkClass);
+  expect(link.parentElement?.className).toBe(lineTitleClass);
+  // Its facts in a block of their own, the row's size and grey; restores-to the last line still.
+  const facts = link.parentElement?.nextElementSibling as HTMLElement;
+  expect(facts.className).toBe(cn(factsClass, "space-y-1"));
+  expect(facts.lastElementChild?.textContent).toBe("Restores under “Guide”");
+  expect([...within(row as HTMLElement).getByRole("button", { name: /^Restore/ }).classList]).toEqual(
+    expect.arrayContaining(["h-7.5", "rounded-full", "ms-auto"])
+  );
+});
+
+test("an empty trash says so with an icon", async () => {
+  renderApp(trashPath, pageServer().app);
+  const empty = await screen.findByText("The trash is empty.", { selector: "p" });
+  expect(empty.previousElementSibling?.getAttribute("aria-hidden")).toBe("true");
+  expect(empty.previousElementSibling?.querySelector("svg")).not.toBeNull();
+});
+
+// M13/P5/S2 (decision 940): an item's link arrives at its preview, whose title takes the focus: not the body.
+test("an item's link leads to its preview arrived at, its title taking the focus", async () => {
+  const user = userEvent.setup();
+  const { server } = trashed();
+  const { router } = renderApp(trashPath, server.app);
+  await screen.findByRole("list", { name: "Trash" });
+
+  await user.click(within(rows()[2] as HTMLElement).getByRole("link"));
+
+  await waitFor(() => expect(router.state.location.state).toEqual(arrived));
+  const title = await screen.findByRole("heading", { level: 1, name: "Linux" });
+  await waitFor(() => expect(document.activeElement).toBe(title));
 });

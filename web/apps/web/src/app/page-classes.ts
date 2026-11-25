@@ -33,6 +33,12 @@ export const noteClass = "text-compact text-muted-foreground";
 export const stackedLinesClass = "group/row space-y-1 px-4.5 py-3.5";
 
 /**
+ * A row of text on the left and what it does on the right: an item of the trash (decision 925). Its text takes P3's
+ * listTextClass, the width its button leaves; its button ms-auto, on the right below the text too.
+ */
+export const splitRowClass = "group/row flex flex-wrap items-start justify-between gap-x-4 gap-y-2 px-4.5 py-3.5";
+
+/**
  * A row's first line, 14px, 500, as a settings row's (review B's P5B-I2); its link, underlined as it is hovered alone
  * (00-M13 4.7: a list's links are not).
  */
