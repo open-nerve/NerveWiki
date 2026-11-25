@@ -101,3 +101,18 @@ test("a preview of a node no longer in the trash has the column and the empty he
   expect(row.className).toBe(headRowClass);
   expect(title.className).toBe(docTitleClass);
 });
+
+// M8/P2B fix check 2 (v0.1 design 13.2, item 17), the half the cell of trash-preview.test.tsx:554 no longer holds
+// (decision 940; P5S2A-M1, P5S2C-I2): opened at its address, not arrived at, from no node deleted with it since and
+// replacing nothing that had the focus, the preview takes none. Its effects have run once the document is named for
+// the item: Preview names it after it takes the focus or not, in one commit's effects, its content read before.
+test("a preview opened at its address, not arrived at, takes no focus", async () => {
+  const { server } = trashed();
+  renderApp(previewPath(install.id), server.app);
+  await screen.findByRole("heading", { level: 1, name: "Install" });
+  const article = await screen.findByRole("article", { name: "Install" });
+  await within(article).findByText("Install");
+  await waitFor(() => expect(document.title).toBe("Install · Trash · Plans · Nerve Wiki"));
+
+  expect(document.activeElement).toBe(document.body);
+});

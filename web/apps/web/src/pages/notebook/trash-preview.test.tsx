@@ -556,8 +556,8 @@ test("a preview opened from the trash's list is arrived at, its title taking the
   await user.click(await screen.findByRole("link", { name: "Install (From: Guide)" }));
 
   const title = await screen.findByRole("heading", { level: 1, name: "Install" });
-  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
-  expect(document.activeElement).toBe(title);
+  // Waited for, as an arrival is (P5S2C-N2): the time it once gave the negative is no longer needed.
+  await waitFor(() => expect(document.activeElement).toBe(title));
 });
 
 // M8/P2B fix check 1, N2 (K5b): the item read again as a network would, after the refusal is said.
