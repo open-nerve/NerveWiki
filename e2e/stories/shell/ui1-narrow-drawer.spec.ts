@@ -234,6 +234,8 @@ test("UI1 (page): at 375 wide the workspace's home and a notebook's home keep to
   expect((nameBox?.x ?? 0) + (nameBox?.width ?? 0)).toBeLessThanOrEqual(countBox?.x ?? 0);
   // The number of its subpages outside the link, read by no one: the link's description says it.
   await expect(row.getByRole("link")).toHaveAccessibleDescription("1 subpage");
+  // The sentence it reads hidden: read once, not again in browse mode (P5S1C-M2).
+  await expect(row.getByText("1 subpage", { exact: true })).toBeHidden();
   // A short title keeps New page beside it: under sm the title is as wide as its words (review B's P5B-R1-M1).
   const plansTitle = await main.getByRole("heading", { level: 1, name: "Plans", exact: true }).boundingBox();
   const beside = await newPage.boundingBox();

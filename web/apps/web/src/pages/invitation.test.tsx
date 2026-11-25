@@ -1,12 +1,13 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import { FakeChannels } from "../events/testing/fake-channels";
 import { FakePage } from "../events/testing/fake-page";
 import type { User } from "../services/account.service";
 import type { Workspace } from "../services/workspace.service";
 import { answerClosings } from "../stores/edit-closing";
+import { WorkspaceStore } from "../stores/workspace.store";
 import { withEvents } from "../test/event-server";
 import {
   byRoute,
@@ -446,16 +447,21 @@ function held() {
 }
 
 /**
- * listAnswered waits for the invitation's page signed in with its workspaces read: the account's button and Accept
- * shown, the read of the workspaces sent, and a moment for its answer, before what is not there is said not to be.
+ * listAnswered watches the reads of the workspaces from before the page renders. What it returns waits for the
+ * invitation's page signed in with its workspaces read, before what is not there is said not to be: the account's
+ * button and Accept shown, then the top right's read of the list answered and written in the store, and React's
+ * updates from it flushed. A signal, not a time (review A's P5S1A-N1, C's P5S1C-N5).
  */
-async function listAnswered(sent: string[]) {
-  expect(await screen.findByRole("button", { name: "Ada" })).toBeTruthy();
-  expect(await screen.findByRole("button", { name: "Accept invitation" })).toBeTruthy();
-  await waitFor(() =>
-    expect(sent.some((each) => each.startsWith("GET ") && each.endsWith("/api/v0/workspaces"))).toBe(true)
-  );
-  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+function listAnswered() {
+  const load = vi.spyOn(WorkspaceStore.prototype, "load");
+  return async () => {
+    expect(await screen.findByRole("button", { name: "Ada" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Accept invitation" })).toBeTruthy();
+    await waitFor(() => expect(load).toHaveBeenCalled());
+    await act(async () => {
+      await Promise.allSettled(load.mock.results.map((result) => result.value));
+    });
+  };
 }
 
 test("signed in, an account in a workspace and done with its onboarding has Back to the workspace at the top right: arrived at where / lands", async () => {
@@ -471,18 +477,20 @@ test("signed in, an account in a workspace and done with its onboarding has Back
 });
 
 test("signed in, an account in no workspace has no Back to the workspace: / would land on the page that creates one", async () => {
-  const { app, sent } = invitationServer({ joined: [] });
+  const answered = listAnswered();
+  const { app } = invitationServer({ joined: [] });
   renderApp(page, app);
 
-  await listAnswered(sent);
+  await answered();
   expect(screen.queryByRole("link", { name: "Back to the workspace" })).toBeNull();
 });
 
 test("signed in, an account with onboarding left has no Back to the workspace: / would go to the onboarding", async () => {
-  const { app, sent } = invitationServer({ me: { ...userJSON, onboarding_steps: [] } });
+  const answered = listAnswered();
+  const { app } = invitationServer({ me: { ...userJSON, onboarding_steps: [] } });
   renderApp(page, app);
 
-  await listAnswered(sent);
+  await answered();
   expect(screen.queryByRole("link", { name: "Back to the workspace" })).toBeNull();
 });
 

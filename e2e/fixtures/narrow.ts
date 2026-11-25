@@ -4,13 +4,15 @@ import { expect, type Locator, type Page } from "@playwright/test";
 export const phoneWidth = 375;
 
 /**
- * expectFits checks, at the window's width (phoneWidth, or narrower: 320, M13/P5/S1), that page scrolls not sideways,
- * and that each of boxes keeps to the screen and, one not inline (a paragraph, a heading, a dialog, a filter's
- * wrapper), holds its content: a long name widens one of them first. A dialog is fixed: what it lets out does not
- * widen the page, so it is checked as a box (M12/P2/S3).
+ * expectFits checks, at the window's width (phoneWidth, or narrower: 320, M13/P5/S1; a wider one is a caller that
+ * forgot to set it, and fails, P5S1A-N4), that page scrolls not sideways, and that each of boxes keeps to the screen
+ * and, one not inline (a paragraph, a heading, a dialog, a filter's wrapper), holds its content: a long name widens
+ * one of them first. A dialog is fixed: what it lets out does not widen the page, so it is checked as a box
+ * (M12/P2/S3).
  */
 export async function expectFits(page: Page, ...boxes: Locator[]): Promise<void> {
   const screen = page.viewportSize()?.width ?? phoneWidth;
+  expect(screen, "a phone's width or narrower").toBeLessThanOrEqual(phoneWidth);
   const width = await page.evaluate(() => ({
     viewport: document.documentElement.clientWidth,
     content: document.documentElement.scrollWidth,

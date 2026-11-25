@@ -42,6 +42,10 @@ test("a root page's row: its icon read by no one, its link named by the page alo
   // Two pages under Guide (Linux is under Install, not under Guide), one under Plans for Q1, none under Notes.
   expect(within(list).getByRole("link", { name: "Guide", description: "2 subpages" })).toBeTruthy();
   expect(within(list).getByRole("link", { name: "Plans for Q1", description: "1 subpage" })).toBeTruthy();
+  // The sentence the description reads is hidden: read once, as the description, not again in browse mode (decision
+  // 919, P5S1C-M2).
+  const described = within(list).getByRole("link", { name: "Guide" }).getAttribute("aria-describedby") ?? "";
+  expect(document.getElementById(described)?.hidden).toBe(true);
   const plain = within(list).getByRole("link", { name: "Notes" });
   expect(plain.getAttribute("aria-describedby")).toBeNull();
   // The number seen is outside the link, read by no one; Notes' row has none.
