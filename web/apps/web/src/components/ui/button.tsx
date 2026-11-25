@@ -31,8 +31,16 @@ const buttonVariants = cva(
   }
 );
 
+/**
+ * buttonClass is a button's classes merged, as Button has them: a link drawn as a button takes it (cva joins its
+ * variants' unmerged: rounded-lg and rounded-full both, the style sheet's order deciding; review B's P5B-I1).
+ */
+export function buttonClass(variants: VariantProps<typeof buttonVariants>, className?: string): string {
+  return cn(buttonVariants(variants), className);
+}
+
 type ButtonProps = ComponentProps<"button"> & VariantProps<typeof buttonVariants>;
 
 export function Button({ className, variant, size, shape, type = "button", ...props }: ButtonProps) {
-  return <button type={type} className={cn(buttonVariants({ variant, size, shape }), className)} {...props} />;
+  return <button type={type} className={buttonClass({ variant, size, shape }, className)} {...props} />;
 }

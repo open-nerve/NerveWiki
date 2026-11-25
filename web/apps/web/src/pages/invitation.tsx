@@ -12,6 +12,7 @@ import { NotLoaded } from "../app/not-loaded";
 import { useSession } from "../app/session-state";
 import { SessionUnavailable } from "../app/session-unavailable";
 import { useSignOut } from "../app/sign-out";
+import { EntryCard, entryTitleClass } from "../components/entry-card";
 import { Loading } from "../components/loading";
 import { Alert } from "../components/ui/alert";
 import { Button } from "../components/ui/button";
@@ -27,6 +28,8 @@ import { CredentialsForm, signInProblems, signUpProblems } from "./credentials-f
  * workspace. Signing in, up or out only changes the session (v0.1 design
  * 13.2, rule 10): the next generation shows this page again, at the same
  * address, whose fragment holds the token, which never goes into a next.
+ * In the entry's card, under the product's name (M13/P5/S1, decision 920);
+ * signed in, the top right has Back to the workspace (Corner, decision 941).
  */
 export const InvitationPage = observer(function InvitationPage() {
   const { id = "" } = useParams();
@@ -37,12 +40,12 @@ export const InvitationPage = observer(function InvitationPage() {
   // Arrived at, from the settings' Back say, its title takes the focus (M13/P3/S1, decision 835).
   const heading = useArrivalFocus<HTMLHeadingElement>();
   return (
-    <section className="mx-auto max-w-sm space-y-6">
-      <h1 ref={heading} tabIndex={-1} className="text-2xl font-semibold outline-none">
+    <EntryCard>
+      <h1 ref={heading} tabIndex={-1} className={entryTitleClass}>
         {t("invitation.title")}
       </h1>
       {link === undefined ? <Alert>{t("problem.workspace.invitation_not_found")}</Alert> : <Invitation link={link} />}
-    </section>
+    </EntryCard>
   );
 });
 
@@ -62,7 +65,8 @@ const Invitation = observer(function Invitation({ link }: { link: InvitationLink
       next = <Loading />;
       break;
     case "unavailable":
-      next = <SessionUnavailable onRetry={() => void auth.retry()} />;
+      // The page's one h1 is the invitation's (decision 922).
+      next = <SessionUnavailable level="h2" onRetry={() => void auth.retry()} />;
       break;
     case "signed-out":
       next = <SignInOrUp link={link} />;

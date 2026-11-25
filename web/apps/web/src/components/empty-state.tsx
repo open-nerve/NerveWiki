@@ -9,8 +9,8 @@ const frame: Record<Size, string> = {
   card: "flex flex-col items-center gap-2.5 px-4.5 py-7 text-center",
 };
 
-/** The tile an empty list's or a status page's icon is in (StatusPage shares it, from commit 3: exported then). */
-const iconTileClass: Record<Size, string> = {
+/** The tile an empty list's or a status page's icon is in (StatusPage shares it). */
+export const iconTileClass: Record<Size, string> = {
   page: "grid size-11 shrink-0 place-items-center rounded-card border border-border bg-surface-2 text-muted-foreground [&_svg]:size-5",
   card: "grid size-9 shrink-0 place-items-center rounded-control border border-border bg-surface-2 text-muted-foreground [&_svg]:size-4.5",
 };

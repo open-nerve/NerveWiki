@@ -45,6 +45,9 @@ const REQUIRED = [
   // a name cut short in the three, Firefox's breaks not the others' (M13/P5/S1, 5.1).
   ["firefox", "shell/ui1-narrow-drawer.spec.ts", "UI1 (page): at 375 wide the workspace's home"],
   ["webkit", "shell/ui1-narrow-drawer.spec.ts", "UI1 (page): at 375 wide the workspace's home"],
+  // The entry's card and a page not found, their widths and the way home's focus, are each engine's (M13/P5/S1, 5.1).
+  ["firefox", "shell/ui1-narrow-drawer.spec.ts", "UI1 (page): at 375 wide the sign-in card"],
+  ["webkit", "shell/ui1-narrow-drawer.spec.ts", "UI1 (page): at 375 wide the sign-in card"],
   // The settings' mode, their way in and out and its focus, are each engine's (M13/P3/S1, 5.3).
   ["firefox", "shell/ui2-settings-mode.spec.ts", "UI2 (page): the settings are entered"],
   ["webkit", "shell/ui2-settings-mode.spec.ts", "UI2 (page): the settings are entered"],

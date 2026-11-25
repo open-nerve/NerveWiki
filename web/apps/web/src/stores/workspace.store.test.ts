@@ -195,6 +195,29 @@ test("an invitation accepted before the first read leaves the list to it", async
   expect(slugs(store)).toEqual(["lab"]);
 });
 
+// M13/P5/S1 (decision 941; review A's P5A-R1-M1): the first read of a tab, out as an invitation is accepted, comes back
+// without the workspace joined; with no list to keep, the store reads again rather than write what is older.
+test("the first read out as an invitation is accepted, answered after it without its workspace: the list is read again, and has it", async () => {
+  let answerFirst: ((list: Workspace[]) => void) | undefined;
+  let reads = 0;
+  const store = storeOf([], {
+    list: () =>
+      ++reads === 1
+        ? new Promise<Workspace[]>((resolve) => (answerFirst = resolve))
+        : Promise.resolve([workspace("acme", "Acme"), workspace("lab", "Lab")]),
+    accept: async () => workspace("lab", "Lab"),
+  });
+
+  const read = store.load();
+  await store.accept({ id: "i1", token: "nwk_inv_x" });
+  expect(store.list).toBeUndefined();
+  answerFirst?.([workspace("acme", "Acme")]);
+
+  expect((await read).map((w) => w.slug)).toEqual(["acme", "lab"]);
+  expect(slugs(store)).toEqual(["acme", "lab"]);
+  expect(reads).toBe(2);
+});
+
 // A workspace's renames go out one at a time (v0.1 design 13.2, item 1):
 // the store outlives the general page, whose form, mounted anew, may send
 // while the rename before is out; the server's answers may come back in

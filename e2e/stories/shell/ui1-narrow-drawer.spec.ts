@@ -233,3 +233,34 @@ test("UI1 (page): at 375 wide the workspace's home and a notebook's home keep to
   const beside = await newPage.boundingBox();
   expect(beside?.y ?? 0).toBeLessThan((plansTitle?.y ?? 0) + (plansTitle?.height ?? 0));
 });
+
+// M13/P5/S1 (decisions 920, 921, 924): the entry pages a card under the product's name, 327px wide at a phone's width;
+// a page not found centred, its way home arrived at.
+test("UI1 (page): at 375 wide the sign-in card and a page not found keep to the screen, the product's name above the form", async ({
+  api,
+  page,
+  signedInPage,
+}, testInfo) => {
+  const { tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const main = page.getByRole("main");
+  await page.setViewportSize({ width: phoneWidth, height: 800 });
+
+  await goto(page, "/sign-in");
+  const title = main.getByRole("heading", { level: 1, name: "Sign in", exact: true });
+  await expect(title).toBeVisible();
+  const name = main.getByText("Nerve Wiki", { exact: true });
+  await expect(name).toBeVisible();
+  // Text, above the title: no heading of its own.
+  await expect(main.getByRole("heading")).toHaveCount(1);
+  expect((await name.boundingBox())?.y ?? 0).toBeLessThan((await title.boundingBox())?.y ?? 0);
+  await expectFits(page, main.locator("form"));
+
+  await signedInPage(tokens);
+  await goto(page, `/${slugFor(testInfo, "nowhere")}`);
+  await expect(main.getByRole("heading", { level: 1, name: "Page not found", exact: true })).toBeVisible();
+  const home = main.getByRole("link", { name: "Go to the home page", exact: true });
+  await expect(home).toBeVisible();
+  await expectFits(page);
+  await home.click();
+  await expect(main.getByRole("heading", { level: 1, name: workspace.name, exact: true })).toBeFocused();
+});

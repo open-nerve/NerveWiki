@@ -5,7 +5,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
-import { Button } from "./button";
+import { Button, buttonClass } from "./button";
 
 // The buttons' looks (M13/P1 design 4.1.5, 4.2.2).
 
@@ -119,4 +119,19 @@ test("the small size is 30px of compact text, the small icon's 30px square, the 
   const pill = screen.getByRole("button", { name: "Pill" }).classList;
   expect(pill.contains("rounded-full"), "rounded-full").toBe(true);
   expect(pill.contains("rounded-lg"), "rounded-lg").toBe(false);
+});
+
+test("buttonClass is a button's classes merged as Button has them: a pill's corners and a small one's text, not the base's (decision 921)", () => {
+  const pill = buttonClass({ variant: "outline", size: "sm", shape: "pill" }).split(" ");
+  expect(pill).toContain("rounded-full");
+  expect(pill).toContain("text-compact");
+  expect(pill).not.toContain("rounded-lg");
+  expect(pill).not.toContain("text-sm");
+
+  render(
+    <Button variant="outline" size="sm" shape="pill">
+      Reload
+    </Button>
+  );
+  expect(screen.getByRole("button", { name: "Reload" }).className).toBe(pill.join(" "));
 });

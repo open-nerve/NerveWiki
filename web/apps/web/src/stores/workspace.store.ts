@@ -52,13 +52,16 @@ export class WorkspaceStore {
   /**
    * load reads the list; SWR calls it (useSWR with this as fetcher), on
    * focus too. A change answered while the read was out is newer than what
-   * it read: the list kept stays the one with the change.
+   * it read: the list kept stays the one with the change; with no list to
+   * keep, it reads again: what it read is older than the change (an
+   * invitation accepted as a tab's first read is out, M13/P5/S1, decision
+   * 941).
    */
   async load(): Promise<Workspace[]> {
     const answeredBefore = this.changesAnswered;
     const list = await this.service.list();
-    if (this.changesAnswered !== answeredBefore && this.list !== undefined) {
-      return this.list;
+    if (this.changesAnswered !== answeredBefore) {
+      return this.list ?? this.load();
     }
     runInAction(() => {
       this.list = list;

@@ -1,5 +1,8 @@
-import { useRef } from "react";
+import { CloudOff } from "lucide-react";
+import { useRef, type ReactNode } from "react";
 
+import { entryTitleClass } from "../components/entry-card";
+import { StatusPage, statusActionsClass, statusBodyClass } from "../components/status-page";
 import { Button } from "../components/ui/button";
 import { useT } from "../i18n/i18n";
 import { useCornerBack } from "./corner";
@@ -7,42 +10,74 @@ import { useDocumentTitle } from "./document-title";
 import { useSignOut } from "./sign-out";
 
 /**
- * SessionUnavailable stands in for a page while the session cannot be used
- * for now: a refresh or the account's load failed for a passing reason
- * (429, 5xx, no network). The tab is still signed in, and the address
- * stays (M1/P5 design 3.5). Signing out works all the same: it forgets the
- * session in this browser even when the server cannot be told, asking
- * first while an edit has changes not saved (useSignOut). Under a page
- * (the invitation's) the page keeps naming the tab.
+ * useUnavailable is what says the session cannot be used for now, as either shell lays it out: its title's and its
+ * line's texts, and its two buttons, Try again and Sign out, with Sign out's dialog. Signing out works all the same: it
+ * forgets the session in this browser even when the server cannot be told, asking first while an edit has changes not
+ * saved (useSignOut), the focus given back to Sign out.
  */
-export function SessionUnavailable({ onRetry }: { onRetry: () => void }) {
+function useUnavailable(
+  onRetry: () => void,
+  size?: "sm"
+): { title: string; body: string; buttons: ReactNode; dialog: ReactNode } {
   const t = useT();
   const leave = useRef<HTMLButtonElement>(null);
   const { signOut, dialog } = useSignOut(() => leave.current?.focus());
-  return (
-    <section role="alert" className="space-y-3">
-      <h1 className="text-xl font-semibold">{t("session.unavailableTitle")}</h1>
-      <p className="text-muted-foreground">{t("session.unavailableBody")}</p>
-      <div className="flex gap-2">
-        <Button variant="outline" onClick={onRetry}>
+  const shape = size === undefined ? undefined : "pill";
+  return {
+    title: t("session.unavailableTitle"),
+    body: t("session.unavailableBody"),
+    buttons: (
+      <>
+        <Button variant="outline" size={size} shape={shape} onClick={onRetry}>
           {t("session.retry")}
         </Button>
-        <Button ref={leave} variant="ghost" onClick={signOut}>
+        <Button ref={leave} variant="ghost" size={size} shape={shape} onClick={signOut}>
           {t("session.signOut")}
         </Button>
-      </div>
+      </>
+    ),
+    dialog,
+  };
+}
+
+/**
+ * SessionUnavailable stands in for a page while the session cannot be used
+ * for now: a refresh or the account's load failed for a passing reason
+ * (429, 5xx, no network). The tab is still signed in, and the address
+ * stays (M1/P5 design 3.5). Under a page (the invitation's) the page keeps
+ * naming the tab; there its title is an h2 (level), the page's one h1 the
+ * invitation's, its lines left as the card's (M13/P5/S1, decision 922). An
+ * alert, its title in it.
+ */
+export function SessionUnavailable({ onRetry, level = "h1" }: { onRetry: () => void; level?: "h1" | "h2" }) {
+  const { title, body, buttons, dialog } = useUnavailable(onRetry);
+  const Title = level;
+  return (
+    <section role="alert" className="space-y-3">
+      <Title className={level === "h2" ? "text-base font-semibold" : "text-xl font-semibold"}>{title}</Title>
+      <p className="text-muted-foreground">{body}</p>
+      <div className="flex gap-2">{buttons}</div>
       {dialog}
     </section>
   );
 }
 
 /**
- * SessionUnavailablePage is SessionUnavailable in place of a whole page: it names the tab as well. In place of a page
- * with a left column it has none: it gives the top right back, Appearance there (M13/P2/S1, decision 792).
+ * SessionUnavailablePage says the session cannot be used for now in place of a whole page, centred as a status page
+ * (M13/P5/S1, decision 921): Try again and Sign out, no way home, the home needing the session too. It names the tab
+ * as well. In place of a page with a left column it has none: it gives the top right back, Appearance there (M13/P2/S1,
+ * decision 792).
  */
 export function SessionUnavailablePage({ onRetry }: { onRetry: () => void }) {
   useCornerBack();
-  const t = useT();
-  useDocumentTitle(t("session.unavailableTitle"));
-  return <SessionUnavailable onRetry={onRetry} />;
+  const { title, body, buttons, dialog } = useUnavailable(onRetry, "sm");
+  useDocumentTitle(title);
+  return (
+    <StatusPage icon={CloudOff} alert>
+      <h1 className={entryTitleClass}>{title}</h1>
+      <p className={statusBodyClass}>{body}</p>
+      <div className={statusActionsClass}>{buttons}</div>
+      {dialog}
+    </StatusPage>
+  );
 }

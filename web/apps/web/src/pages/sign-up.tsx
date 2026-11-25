@@ -4,6 +4,7 @@ import useSWR from "swr";
 
 import { useDocumentTitle } from "../app/document-title";
 import { keepNext } from "../app/next-path";
+import { EntryCard, entryTitleClass } from "../components/entry-card";
 import { Loading } from "../components/loading";
 import { useT } from "../i18n/i18n";
 import { useStore } from "../stores/context";
@@ -11,7 +12,9 @@ import { CredentialsForm, signUpProblems } from "./credentials-form";
 
 /**
  * SignUpPage creates an account and signs in to it. While the instance
- * takes no new accounts, it says so instead of showing the form.
+ * takes no new accounts, it says so instead of showing the form. In the
+ * entry's card, under the product's name (M13/P5/S1, decision 920); while
+ * it is not known whether the instance takes them, Loading alone.
  */
 export const SignUpPage = observer(function SignUpPage() {
   const { auth, instance } = useStore();
@@ -31,8 +34,8 @@ export const SignUpPage = observer(function SignUpPage() {
     return <Loading />;
   }
   return (
-    <section className="mx-auto max-w-sm space-y-6">
-      <h1 className="text-2xl font-semibold">{t("signUp.title")}</h1>
+    <EntryCard>
+      <h1 className={entryTitleClass}>{t("signUp.title")}</h1>
       {open ? (
         <>
           <CredentialsForm
@@ -52,6 +55,6 @@ export const SignUpPage = observer(function SignUpPage() {
           <p className="text-sm">{signInLink}</p>
         </>
       )}
-    </section>
+    </EntryCard>
   );
 });

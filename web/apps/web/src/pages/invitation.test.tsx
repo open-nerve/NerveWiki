@@ -32,10 +32,12 @@ const acme: Workspace = { ...workspaceJSON, id: "0199a2b4-0000-7000-8000-0000000
 /**
  * The server of the invitation page: link previews Lab, as a member;
  * accepting answers as accept says, by default Lab with the role member,
- * which joins the account's workspaces, Acme before it (/ would land on
- * Acme); me is the account signed in. Each request goes into sent, as its
- * method and address, and each body into bodies. While state.down names
- * a path, it cannot be reached; refresh answers the session's refresh.
+ * which joins the account's workspaces, joined, by default Acme alone
+ * (/ would land on Acme); me is the account signed in. Each request goes
+ * into sent, as its method and address, and each body into bodies. While
+ * state.down names a path, it cannot be reached; refresh answers the
+ * session's refresh. firstList, given, answers the first read of the
+ * workspaces, the others answering joined.
  */
 function invitationServer({
   signedIn = true,
@@ -43,11 +45,22 @@ function invitationServer({
   accept,
   register,
   refresh = () => json(tokensJSON),
-}: { signedIn?: boolean; me?: User; accept?: Answer; register?: Answer; refresh?: Answer } = {}) {
+  joined: listed = [acme],
+  firstList,
+}: {
+  signedIn?: boolean;
+  me?: User;
+  accept?: Answer;
+  register?: Answer;
+  refresh?: Answer;
+  joined?: Workspace[];
+  firstList?: Answer;
+} = {}) {
   const sent: string[] = [];
   const bodies: unknown[] = [];
   const state = { down: "" };
-  let joined: Workspace[] = [acme];
+  let joined: Workspace[] = listed;
+  let lists = 0;
   const routes: Record<string, Answer> = {
     "POST /api/v0/auth/refresh": refresh,
     "GET /api/v0/instance": () => json(instanceJSON),
@@ -55,7 +68,8 @@ function invitationServer({
     "POST /api/v0/auth/register": async (request) => (await register?.(request)) ?? json(tokensJSON, 201),
     "POST /api/v0/auth/logout": () => new Response(null, { status: 204 }),
     "GET /api/v0/me": () => json(me),
-    "GET /api/v0/workspaces": () => json({ data: joined }),
+    "GET /api/v0/workspaces": async (request) =>
+      (lists += 1) === 1 && firstList !== undefined ? firstList(request) : json({ data: joined }),
     [`POST /api/v0/workspace-invitations/${link.id}/preview`]: async (request) => {
       const { token } = (await request.clone().json()) as { token: string };
       return token === link.token
@@ -65,7 +79,8 @@ function invitationServer({
     [`POST /api/v0/workspace-invitations/${link.id}/accept`]: async (request) => {
       const answer = (await accept?.(request)) ?? json({ ...workspaceJSON, role: "member" });
       if (answer.ok) {
-        joined = [acme, (await answer.clone().json()) as Workspace];
+        const workspace = (await answer.clone().json()) as Workspace;
+        joined = [...joined.filter((each) => each.id !== workspace.id), workspace];
       }
       return answer;
     },
@@ -395,4 +410,94 @@ test("the invitation's Sign out pressed again while the other tabs are asked ask
   expect(asks).toHaveLength(1);
   expect(sent.filter((request) => request.includes("/auth/logout"))).toHaveLength(1);
   listening.close();
+});
+
+// M13/P5/S1 (decision 922): the session unavailable in the invitation's card is its h2, the page's one h1 the
+// invitation's.
+test("a session that cannot be used for now says so in an alert under the invitation, its title an h2: the page's one h1 is the invitation's", async () => {
+  const { app } = invitationServer({ refresh: () => problem(503, "server_busy") });
+  renderApp(page, app);
+
+  const title = await screen.findByRole("heading", { name: "Cannot reach the server" });
+  expect(title.tagName).toBe("H2");
+  expect(title.closest('[role="alert"]')).not.toBeNull();
+  expect(screen.getAllByRole("heading", { level: 1 }).map((heading) => heading.textContent)).toEqual(["Invitation"]);
+});
+
+// M13/P5/S1 (decision 941; review A's P5A-Q2): signed in, the invitation's way back is the top right's Back to the
+// workspace, as the page that creates a workspace has it: only where / lands on a workspace.
+
+/** held is an answer kept until released; asked settles once it is asked for (as layout.test.tsx's). */
+function held() {
+  const waiting: ((response: Response) => void)[] = [];
+  const askers: (() => void)[] = [];
+  const asked = new Promise<void>((resolve) => {
+    askers.push(resolve);
+  });
+  const answer: Answer = () =>
+    new Promise<Response>((resolve) => {
+      waiting.push(resolve);
+      for (const ask of askers) ask();
+    });
+  return { answer, asked, release: (response: Response) => waiting.forEach((resolve) => resolve(response)) };
+}
+
+/**
+ * listAnswered waits for the invitation's page signed in with its workspaces read: the account's button and Accept
+ * shown, the read of the workspaces sent, and a moment for its answer, before what is not there is said not to be.
+ */
+async function listAnswered(sent: string[]) {
+  expect(await screen.findByRole("button", { name: "Ada" })).toBeTruthy();
+  expect(await screen.findByRole("button", { name: "Accept invitation" })).toBeTruthy();
+  await waitFor(() =>
+    expect(sent.some((each) => each.startsWith("GET ") && each.endsWith("/api/v0/workspaces"))).toBe(true)
+  );
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+}
+
+test("signed in, an account in a workspace and done with its onboarding has Back to the workspace at the top right: arrived at where / lands", async () => {
+  const user = userEvent.setup();
+  const { app } = invitationServer();
+  const { router } = renderApp(page, app);
+
+  await user.click(await screen.findByRole("link", { name: "Back to the workspace" }));
+
+  const acmeHome = await screen.findByRole("heading", { level: 1, name: "Acme" });
+  expect(router.state.location.pathname).toBe("/acme");
+  await waitFor(() => expect(document.activeElement).toBe(acmeHome));
+});
+
+test("signed in, an account in no workspace has no Back to the workspace: / would land on the page that creates one", async () => {
+  const { app, sent } = invitationServer({ joined: [] });
+  renderApp(page, app);
+
+  await listAnswered(sent);
+  expect(screen.queryByRole("link", { name: "Back to the workspace" })).toBeNull();
+});
+
+test("signed in, an account with onboarding left has no Back to the workspace: / would go to the onboarding", async () => {
+  const { app, sent } = invitationServer({ me: { ...userJSON, onboarding_steps: [] } });
+  renderApp(page, app);
+
+  await listAnswered(sent);
+  expect(screen.queryByRole("link", { name: "Back to the workspace" })).toBeNull();
+});
+
+// Review A's P5A-R1-M1: the read the top right sends, out as the invitation is accepted, comes back without the
+// workspace joined; the workspace's shell, keyed alike, would find it not.
+test("an invitation accepted while the tab's first read of its workspaces is out goes into the workspace joined", async () => {
+  const user = userEvent.setup();
+  const first = held();
+  const { app } = invitationServer({ firstList: first.answer });
+  const { router } = renderApp(page, app);
+
+  // Out before the acceptance: the invitation's top right reads the list.
+  await first.asked;
+  await user.click(await screen.findByRole("button", { name: "Accept invitation" }));
+  await waitFor(() => expect(router.state.location.pathname).toBe("/lab"));
+  // What it reads is the list as it was asked for: Acme alone.
+  first.release(json({ data: [acme] }));
+
+  expect(await screen.findByRole("heading", { level: 1, name: "Lab" })).toBeTruthy();
+  expect(screen.queryByRole("heading", { name: "Page not found" })).toBeNull();
 });

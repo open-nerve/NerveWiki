@@ -110,7 +110,8 @@ test("while the workspaces load there is no account's button; a slug not found t
   await screen.findByRole("heading", { name: "Page not found" });
   const account = await screen.findByRole("button", { name: "Ada" });
   expect(account.closest("[data-shell]")).toBeNull();
-  // Back to the workspace is the settings' and the creating page's (review C, S1C-N3).
+  // Back to the workspace is the settings', the creating page's and the signed-in invitation's (review C, S1C-N3;
+  // M13/P5/S1, decision 941).
   expect(screen.queryByRole("link", { name: "Back to the workspace" })).toBeNull();
 });
 
