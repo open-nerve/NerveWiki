@@ -319,7 +319,21 @@ const ImportForm = observer(function ImportForm({
   }
 
   return (
-    <form ref={ref} noValidate onSubmit={onSubmit} className="space-y-4">
+    // oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- a held key's repeats on its buttons
+    <form
+      ref={ref}
+      noValidate
+      onSubmit={onSubmit}
+      // Enter or Space held on a button presses it once: the focus goes from Import to Stop the upload as the upload
+      // starts and back as it stops, and a repeat would press the other (review A's P5S3A-F2-N2, P5S3A-F3-N1). A
+      // field's repeats are its own.
+      onKeyDown={(event) => {
+        if (event.repeat && (event.key === "Enter" || event.key === " ") && event.target instanceof HTMLButtonElement) {
+          event.preventDefault();
+        }
+      }}
+      className="space-y-4"
+    >
       {most !== undefined && (
         <p className="text-sm text-muted-foreground">{t("transfer.importMost", { size: formatBytes(most, locale) })}</p>
       )}
@@ -418,12 +432,6 @@ const ImportForm = observer(function ImportForm({
                 return;
               }
               upload.current?.abort();
-            }}
-            onKeyDown={(event) => {
-              // Enter held on Import: the focus comes here, and its repeats press nothing (review A's P5S3A-F2-N2).
-              if (event.repeat && (event.key === "Enter" || event.key === " ")) {
-                event.preventDefault();
-              }
             }}
           >
             {t("transfer.importStop")}

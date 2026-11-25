@@ -261,24 +261,36 @@ test("TR2 (page): a vault imports from the notebook's settings, at its root and 
       .setInputFiles({ name: "again.zip", mimeType: "application/zip", buffer: vault() });
     // 320 wide, while it uploads, Stop the upload and Uploading… inside the dialog, a line each, as one line holds not
     // both (decision 958, extended to the dialog's own buttons): Stop comes under where Import was, and a double click
-    // on Import starts the upload, its second click on Stop stopping nothing (review A's P5S3A-F1-M1). That it fell on
-    // Stop is checked by the point, not taken from a font (review A's P5S3A-F2-N1, C's P5S3C-F2-N2). Past the first
-    // 500 ms, when Stop takes a pointer's click again (decision 960), a press of a count of 2 on it, whatever the
-    // layout, stops nothing either; going back asks, which it does while the upload goes on. Then the two buttons of
-    // what it asks inside its box (decision 958; review B's P5S3B-I1).
+    // on Import starts the upload, its second click on Stop stopping nothing (review A's P5S3A-F1-M1). Each click is
+    // written down as the document takes it (its capture), by its button and its count: where the second fell,
+    // whatever the font or the moment (review A's P5S3A-F2-N1 and P5S3A-F3-M1, C's P5S3C-F2-N2). Past the first 500 ms,
+    // when Stop takes a pointer's click again (decision 960), a press of a count of 2 on it stops nothing either; going
+    // back asks, which it does while the upload goes on. Then the two buttons of what it asks inside its box (decision
+    // 958; review B's P5S3B-I1).
     const wide = page.viewportSize() ?? { width: 1280, height: 720 };
     await page.setViewportSize({ width: 320, height: 800 });
-    const importButton = dialog.getByRole("button", { name: "Import", exact: true });
-    const importCenter = await centerOf(importButton);
-    await importButton.dblclick();
+    await page.evaluate(() => {
+      const clicks: [string, number][] = [];
+      Object.assign(window, { tr2Clicks: clicks });
+      document.addEventListener(
+        "click",
+        (event) => {
+          const on = event.target instanceof Element ? event.target.closest("button") : null;
+          clicks.push([on?.textContent ?? (event.target instanceof Node ? event.target.nodeName : "?"), event.detail]);
+        },
+        { capture: true }
+      );
+    });
+    const clicked = () => page.evaluate(() => (window as unknown as { tr2Clicks: [string, number][] }).tr2Clicks);
+    await dialog.getByRole("button", { name: "Import", exact: true }).dblclick();
     const stop = dialog.getByRole("button", { name: "Stop the upload" });
     await expect(stop).toBeVisible();
     await expect.poll(() => routed.length).toBe(1);
     const startedAt = await page.evaluate(() => performance.now());
-    expect(
-      await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest("button")?.textContent, importCenter),
-      "what is where Import's center was"
-    ).toBe("Stop the upload");
+    expect(await clicked(), "the double click's clicks").toEqual([
+      ["Import", 1],
+      ["Stop the upload", 2],
+    ]);
     await expectButtonsInside(dialog);
     // On the page's own clock, a bound from below: the upload began before startedAt was read.
     await page.waitForFunction((from) => performance.now() - from > 600, startedAt);
@@ -287,6 +299,11 @@ test("TR2 (page): a vault imports from the notebook's settings, at its root and 
     await page.mouse.down({ clickCount: 2 });
     await page.mouse.up({ clickCount: 2 });
     await expect(stop).toBeVisible();
+    expect(await clicked(), "the clicks, the press's last").toEqual([
+      ["Import", 1],
+      ["Stop the upload", 2],
+      ["Stop the upload", 2],
+    ]);
     await page.goBack();
     const asking = dialog.getByRole("alert");
     await expect(asking.getByRole("button", { name: "Keep uploading" })).toBeVisible();

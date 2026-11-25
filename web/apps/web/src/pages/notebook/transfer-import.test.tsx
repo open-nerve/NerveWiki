@@ -565,12 +565,14 @@ test("the second click of a double one on Import, falling on Stop the upload, st
 
 // Decision 960: a double tap's second may come as a click of its own (detail 1, WebKit's and Firefox's), on Stop come
 // up under Import; for 500 ms from the upload's start Stop takes no pointer's click, a key's (detail 0) at once. The
-// clock is performance's, faked: this cell is the time's alone, its clicks of one count each.
+// clock is performance's, faked: this cell is the time's alone, its clicks of one count each. The clock is moved on
+// before the upload, so that the 500 ms count from its start, not from the clock's zero (review C's P5S3C-F3-M1).
 test("Stop the upload takes no click of a pointer in the upload's first 500 ms, one after; a key's at once", async () => {
   fakePerformance();
   const user = userEvent.setup();
   const server = jobsServer({ answers: { [imports]: () => new Promise<Response>(() => undefined) } });
   renderApp(transfer, server.app);
+  vi.advanceTimersByTime(10_000);
   const { shown, stop } = await startedUpload(user, server);
 
   fireEvent.click(stop(), { detail: 1 });
@@ -603,6 +605,29 @@ test("Enter or Space held on Stop the upload presses nothing with its repeats; p
   expect(transfers(server.app)[0]?.aborted).toBe(false);
   await user.keyboard("{Enter}");
   await waitFor(() => expect(transfers(server.app)[0]?.aborted).toBe(true));
+});
+
+// Enter held on Stop the upload: it stops the upload, the focus goes to Import, and its repeats would press Import,
+// the upload begun again (review A's P5S3A-F3-N1). The form takes no repeat of Enter or Space on a button; a field's,
+// the zip's or the place's, it leaves to the field. (The form has no text box.)
+test("Enter or Space held on Import, the upload stopped, starts nothing with its repeats, a field's left to it; pressed anew, Import starts it", async () => {
+  const user = userEvent.setup();
+  const server = jobsServer({ answers: { [imports]: () => new Promise<Response>(() => undefined) } });
+  renderApp(transfer, server.app);
+  const { shown, stop } = await startedUpload(user, server);
+  await waitFor(() => expect(document.activeElement).toBe(stop()));
+  await user.keyboard("{Enter}");
+  await waitFor(() => expect(transfers(server.app)[0]?.aborted).toBe(true));
+  const importButton = within(shown).getByRole("button", { name: "Import" });
+  await waitFor(() => expect(document.activeElement).toBe(importButton));
+
+  expect(fireEvent.keyDown(importButton, { key: "Enter", repeat: true })).toBe(false);
+  expect(fireEvent.keyDown(importButton, { key: " ", repeat: true })).toBe(false);
+  expect(fireEvent.keyDown(within(shown).getByLabelText("Zip archive"), { key: " ", repeat: true })).toBe(true);
+  expect(fireEvent.keyDown(within(shown).getByLabelText("Import under"), { key: " ", repeat: true })).toBe(true);
+  expect(transfers(server.app).length).toBe(1);
+  await user.keyboard("{Enter}");
+  await waitFor(() => expect(transfers(server.app).length).toBe(2));
 });
 
 test("an import's report counts what it skipped, not missing files, and says what was not imported as it was", async () => {
