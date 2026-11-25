@@ -54,6 +54,10 @@ test.each(["editor", "admin"] as const)("a source attachment's menu follows the 
   renderAttachments(server, linux.id);
   const section = await attachments();
   const link = await within(section).findByRole("link", { name: "photo.png (source) (opens in a new tab)" });
+  // Its source's icon in the faint grey of its kind's (M13/P5/S3, review B's P5B-N2).
+  const sourceIcon = link.previousElementSibling?.getAttribute("class")?.split(" ") ?? [];
+  expect(sourceIcon).toContain("text-faint");
+  expect(sourceIcon).not.toContain("text-muted-foreground");
   // Neither hint is copied with the row's text (M12/P2/S5, 17.2b).
   expect([...link.querySelectorAll(".sr-only")].map((hint) => hint.classList.contains("select-none"))).toEqual([
     true,

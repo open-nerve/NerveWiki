@@ -10,6 +10,7 @@ import { writesNotebook } from "../../app/effective-role";
 import { useFileDrop } from "../../app/file-drop";
 import { NotLoaded } from "../../app/not-loaded";
 import { errorText } from "../../app/problem-messages";
+import { cardClass } from "../../app/settings-page";
 import { canAddSource, canDeleteNode, canManageNode } from "../../app/source-permissions";
 import { FormField } from "../../components/form-field";
 import { Alert } from "../../components/ui/alert";
@@ -211,7 +212,8 @@ export const AttachmentsSection = observer(function AttachmentsSection({
     <section
       ref={section}
       aria-labelledby={headingId}
-      className={cn("space-y-2 rounded-md", drop.over && "ring-2 ring-primary ring-offset-4")}
+      // A drag of files that may drop here rings it amber, a state (M13/P5/S3, decision 933).
+      className={cn("space-y-2 rounded-card", drop.over && "ring-2 ring-accent ring-offset-4 ring-offset-background")}
       {...drop.handlers}
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -239,7 +241,7 @@ export const AttachmentsSection = observer(function AttachmentsSection({
                 upload(files);
               }}
             />
-            <Button ref={uploadButton} variant="outline" onClick={() => picker.current?.click()}>
+            <Button ref={uploadButton} variant="outline" size="sm" shape="pill" onClick={() => picker.current?.click()}>
               <UploadIcon />
               {t(source ? "source.uploadFiles" : "asset.upload")}
             </Button>
@@ -256,7 +258,7 @@ export const AttachmentsSection = observer(function AttachmentsSection({
         {notice.text}
       </p>
       {writer && list !== undefined && list.assets.length === 0 && uploads.length === 0 && (
-        <p className="text-sm text-muted-foreground">{t("asset.dropHint")}</p>
+        <p className="text-compact text-faint">{t("asset.dropHint")}</p>
       )}
       {folders && <Alert>{t("asset.folders")}</Alert>}
       {copied?.done === true && <p className="text-sm text-muted-foreground">{t("asset.copied")}</p>}
@@ -281,7 +283,8 @@ export const AttachmentsSection = observer(function AttachmentsSection({
         <NotLoaded error={error} retry={() => void mutate()} />
       ) : (
         list.assets.length > 0 && (
-          <ul aria-labelledby={headingId} className="divide-y rounded-md border">
+          // A card of rows, as a list's page's (decision 933).
+          <ul aria-labelledby={headingId} className={cardClass}>
             {list.assets.map((asset) => (
               <AttachmentRow
                 key={asset.id}

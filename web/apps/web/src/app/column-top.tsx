@@ -2,7 +2,7 @@ import { createContext, use, type ReactNode } from "react";
 
 /**
  * What a shell puts at the top of its page's column: a notebook's upgrade banner (M13/P4/S1, decision 857), which
- * NotebookLayout gives the routes that draw it there (handle: { column: true }, or a settings page's).
+ * NotebookLayout gives every page of a notebook (M13/P5, decision 915).
  */
 export const ColumnTopContext = createContext<ReactNode>(null);
 

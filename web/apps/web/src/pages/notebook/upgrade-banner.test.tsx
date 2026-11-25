@@ -325,3 +325,25 @@ test("a notebook's settings index has the banner in the settings' column, as its
     1
   );
 });
+
+// M13/P5/S3 (decision 935): the banner a card's look, its edge the cards' (no ink's half edge); its state's line first,
+// 500, after an amber dot, drawn by its edge (no fill: amber marks a state), aligned with its first line and not read.
+test("the banner is a card on the second ground, its state's line after an amber dot no one reads", async () => {
+  const server = pageServer();
+  server.notebook = { ...server.notebook, upgrade: upgradeOf("upgrading", bob.user_id) };
+  renderApp(pagePath(guide.id), server.app);
+  await screen.findByRole("article", { name: "Guide" });
+
+  const banner = bannerOf(said.upgrading) as HTMLElement;
+  expect(banner.className).toBe(
+    "mb-6 block space-y-1 rounded-card border border-border bg-surface-2 px-4.5 py-3.5 text-sm"
+  );
+  const line = within(banner).getByText(said.upgrading);
+  expect(line.parentElement).toBe(banner);
+  expect(line.className).toBe("flex items-start gap-2 font-medium");
+  const dot = line.firstElementChild as HTMLElement;
+  expect(dot.getAttribute("aria-hidden")).toBe("true");
+  expect(dot.textContent).toBe("");
+  expect(dot.className).toBe("mt-[calc(0.5lh-3px)] size-1.5 shrink-0 rounded-full border-3 border-accent");
+  expect(line.textContent).toBe(said.upgrading);
+});

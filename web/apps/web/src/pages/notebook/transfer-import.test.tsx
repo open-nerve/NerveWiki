@@ -477,7 +477,11 @@ test("Stop the upload stops it, the dialog kept; leaving the page asks first, an
   await waitFor(() => expect(transfers(server.app).length).toBe(2));
   const general = `/lab/notebooks/${notebookJSON.id}/settings/general`;
   await router.navigate(general);
-  await user.click(within(await within(shown).findByRole("alert")).getByRole("button", { name: "Keep uploading" }));
+  // What it asks in a box with only an edge: a ground there, the outlined buttons in it would hardly show in the dark
+  // (M13/P5/S3, decision 934; review B's P5B-N4).
+  const asking = await within(shown).findByRole("alert");
+  expect(asking.className).toBe("space-y-3 rounded-lg border border-border px-4 py-3 text-sm");
+  await user.click(within(asking).getByRole("button", { name: "Keep uploading" }));
   expect([router.state.location.pathname === general, transfers(server.app)[1]?.aborted]).toEqual([false, false]);
   expect(within(shown).queryByRole("alert")).toBeNull();
 

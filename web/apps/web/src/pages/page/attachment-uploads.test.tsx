@@ -2,6 +2,8 @@ import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-libra
 import userEvent from "@testing-library/user-event";
 import { expect, onTestFinished, test, vi } from "vitest";
 
+import { cardClass } from "../../app/settings-page";
+import { cn } from "../../lib/cn";
 import { archive, attachments, dropped, nodes, picker, rows, transfers } from "../../test/attachments";
 import { json, notebookJSON, problem } from "../../test/fakes";
 import { assetJSON, assetNode, guide, notes, pagePath, pageServer } from "../../test/page-server";
@@ -826,4 +828,36 @@ test("a file dropped where nothing takes it stays out of the tab; in an editor, 
   editor.textContent = "words";
   expect(fireEvent.dragOver(editor.firstChild as Text, { dataTransfer: dropped([]) })).toBe(true);
   editor.remove();
+});
+
+// M13/P5/S3 (decision 933; review B's P5B-M11): the uploads a card's rows, as the attachments' are (a source's is
+// source-uploads.test.tsx's); a drag of files over the section or the reading view rings it amber, the state that it
+// may drop.
+test("the uploads are a card's rows, as the attachments are; a drag over the section or the reading view rings it amber", async () => {
+  const server = pageServer({ nodes });
+  server.uploadsHeld = true;
+  renderApp(pagePath(guide.id), server.app);
+  const section = await attachments();
+  const view = await screen.findByRole("article", { name: "Guide" });
+
+  choose(section, [new File(["a"], "a.png")]);
+  const uploads = await within(section).findByRole("list", { name: "Uploads" });
+  expect(uploads.className).toBe(cn(cardClass, "text-sm"));
+  expect(uploads.firstElementChild?.className).toBe("flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5");
+  act(() => server.release());
+  await waitFor(() => expect(within(section).queryByRole("list", { name: "Uploads" })).toBeNull());
+
+  // The reading view's zone: the box around it that takes the drop (attachment-drop.tsx).
+  let zone = view.parentElement;
+  while (zone !== null && !zone.classList.contains("space-y-4")) zone = zone.parentElement;
+  for (const over of [section, zone as HTMLElement]) {
+    fireEvent.dragOver(over, { dataTransfer: dropped([]) });
+    // oxlint-disable-next-line no-await-in-loop -- a zone at a time, the other's drag left
+    await waitFor(() =>
+      expect([...over.classList]).toEqual(expect.arrayContaining(["ring-2", "ring-accent", "ring-offset-background"]))
+    );
+    expect([...over.classList]).not.toContain("ring-primary");
+    fireEvent.dragLeave(over, { dataTransfer: dropped([]) });
+  }
+  expect(section.classList.contains("rounded-card")).toBe(true);
 });

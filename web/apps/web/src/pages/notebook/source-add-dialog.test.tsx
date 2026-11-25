@@ -5,6 +5,8 @@ import { Outlet } from "react-router";
 import { expect, test, vi } from "vitest";
 
 import { routes } from "../../app/routes";
+import { fieldClass } from "../../components/ui/input";
+import { cn } from "../../lib/cn";
 import { useStore } from "../../stores/context";
 import { PageTreeStore } from "../../stores/page-tree.store";
 import type { RootStore } from "../../stores/root.store";
@@ -424,3 +426,27 @@ test.each(["closed", "another route", "opened again"] as const)(
     }
   }
 );
+
+// M13/P5/S3 (decisions 926, 934): the dialog's box that asks only an edge, the pasted source's field an input's look,
+// its focus drawn in forced colours too, its note a form's, its label above it as a form's field has it.
+test("the paste's field looks as the title's does, its label spaced as a form's, its note a form's; what the dialog asks is in a box with only an edge", async () => {
+  const user = userEvent.setup();
+  const server = sourceServer();
+  sourcePage(server);
+  const dialog = await pasteDialog(user);
+  const markdown = within(dialog).getByRole("textbox", { name: "Markdown" });
+  const title = within(dialog).getByRole("textbox", { name: "Title" });
+
+  expect(within(dialog).getByText("Markdown", { selector: "label" }).parentElement?.className).toBe("space-y-1.5");
+  expect(markdown.className).toBe(cn(fieldClass, "resize-y py-2 font-mono"));
+  expect([...markdown.classList]).toEqual(
+    expect.arrayContaining(["rounded-control", "bg-surface-2", "focus-visible:outline-hidden"])
+  );
+  expect([...title.classList]).toEqual(expect.arrayContaining(["h-9", "py-1", ...fieldClass.split(" ")]));
+  expect(document.getElementById(`${markdown.id}-note`)?.className).toBe("text-compact text-muted-foreground");
+  draft(dialog);
+  await user.keyboard("{Escape}");
+  expect(within(dialog).getByRole("alert").className).toBe(
+    "space-y-3 rounded-lg border border-border px-4 py-3 text-sm"
+  );
+});
