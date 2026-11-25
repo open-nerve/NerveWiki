@@ -289,7 +289,7 @@ test("a refused revocation stays in the dialog, and the token in the list", asyn
   expect(screen.getAllByRole("listitem", { hidden: true })).toHaveLength(1);
 });
 
-test.each(["/settings/tokens/", "/settings/Tokens"])(
+test.each(["/settings/tokens/", "/settings/Tokens", "/settings/tokens//", "/settings/%74okens"])(
   "the tokens at %s, as the router matches it, are their page: its h1, its list, no error (decision 923)",
   async (at) => {
     tokensPage([], {}, at);
