@@ -69,27 +69,22 @@ type Said =
   | { kind: "startUnread" };
 
 /**
- * headOf is the classes of the right group of the head of notebook's changesets, as their page read has it: a
- * writer's, Undo change in it; none, the trail alone (decision 951). An upgrade under way, which has its banner above
- * the column, has no writer.
- */
-const headOf = (notebook: Notebook) => (writesNotebook(notebook) ? headActionsClass : undefined);
-
-/**
  * ChangesetPage is a changeset of a notebook's history (M8 design 4.7,
  * 4.13; M8/P3 design 4.3), by its id in the address: an address of no
  * changeset's id is no page, and is not read; nor is a changeset of
  * another notebook, or one not found. Each branch is in the column the
  * changeset read is in, below its head's row, empty while there is none
  * (PageColumn; M13/P5/S2, decisions 915, 951): the upgrade's banner at its
- * top stays where it is as the changeset comes.
+ * top stays where it is as the changeset comes. The empty row is the trail
+ * alone for whoever reads it (decision 954): under an upgrade no one may
+ * undo, and an empty group of Undo change would lay out nothing.
  */
 export const ChangesetPage = observer(function ChangesetPage() {
   const notebook = useNotebook();
   const { changesetId = "" } = useParams();
   if (!idPattern.test(changesetId)) {
     return (
-      <PageColumn head={headOf(notebook)}>
+      <PageColumn>
         <NotFoundPage />
       </PageColumn>
     );
@@ -116,14 +111,14 @@ const ChangesetShell = observer(function ChangesetShell({ notebook, id }: { note
   const gone = error instanceof ApiError && error.status === 404;
   if ((data !== undefined && data.notebook_id !== notebook.id) || gone) {
     return (
-      <PageColumn head={headOf(notebook)}>
+      <PageColumn>
         <NotFoundPage replacing={gone && data !== undefined} />
       </PageColumn>
     );
   }
   if (data === undefined) {
     return (
-      <PageColumn head={headOf(notebook)}>
+      <PageColumn>
         <NotLoaded error={error} retry={() => void mutate()} />
       </PageColumn>
     );

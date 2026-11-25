@@ -568,46 +568,38 @@ test("a reader's note and a writer's Undone before are notes under the facts", a
   expect(screen.queryByRole("button", { name: "Undo change" })).toBeNull();
 });
 
-// M13/P5/S2 (decisions 946, 951): on its way, not found, its address no changeset's, the changeset's column is where
-// the read page's is, below an empty row laid out as its head's row: the trail alone, and a writer's group.
-test.each([
-  ["a writer", "admin"],
-  ["a reader", "reader"],
-] as const)(
-  "a changeset on its way lays its head's row out empty for %s, as the changeset read lays it",
-  async (_, role) => {
-    const { server, rework } = reworked(role);
-    const held = gateOf();
-    server.historyWaits.changeset = held.promise;
-    renderApp(changesetPath(rework.id), server.app);
-    const loading = await waitFor(() => {
-      const found = within(screen.getByRole("main")).getByText("Loading…", { selector: "output" });
-      expect(found.closest(".max-w-180")).not.toBeNull();
-      return found;
-    });
-    const empty = (loading.closest(".max-w-180")?.previousElementSibling ?? null) as HTMLElement | null;
-    const shape = {
-      hidden: empty?.getAttribute("aria-hidden"),
-      row: empty?.className,
-      text: empty?.textContent,
-      blocks: [...(empty?.children ?? [])].map((block) => block.className),
-    };
+// M13/P5/S2 (decisions 946, 951, 954): on its way, not found, its address no changeset's, the changeset's column is
+// where the read page's is, below an empty row laid out as its head's row: the trail alone, for whoever reads it (no
+// one undoes under an upgrade, which alone has a banner to keep in its place).
+test("a changeset on its way lays its head's row out empty, the trail alone, as a reader's changeset read lays it", async () => {
+  const { server, rework } = reworked("reader");
+  const held = gateOf();
+  server.historyWaits.changeset = held.promise;
+  renderApp(changesetPath(rework.id), server.app);
+  const loading = await waitFor(() => {
+    const found = within(screen.getByRole("main")).getByText("Loading…", { selector: "output" });
+    expect(found.closest(".max-w-180")).not.toBeNull();
+    return found;
+  });
+  const empty = (loading.closest(".max-w-180")?.previousElementSibling ?? null) as HTMLElement | null;
+  const shape = {
+    hidden: empty?.getAttribute("aria-hidden"),
+    row: empty?.className,
+    text: empty?.textContent,
+    blocks: [...(empty?.children ?? [])].map((block) => block.className),
+  };
 
-    act(() => held.open());
-    const trail = await screen.findByRole("navigation", { name: "Breadcrumb" });
-    const row = trail.parentElement as HTMLElement;
-    expect(shape).toEqual({
-      hidden: "true",
-      row: row.className,
-      text: "",
-      blocks: [
-        cn(trail.className, "h-[1lh] text-compact"),
-        ...[...row.children].slice(1).map((block) => block.className),
-      ],
-    });
-    expect(row.children).toHaveLength(role === "admin" ? 2 : 1);
-  }
-);
+  act(() => held.open());
+  const trail = await screen.findByRole("navigation", { name: "Breadcrumb" });
+  const row = trail.parentElement as HTMLElement;
+  expect(shape).toEqual({
+    hidden: "true",
+    row: row.className,
+    text: "",
+    blocks: [cn(trail.className, "h-[1lh] text-compact")],
+  });
+  expect(row.children).toHaveLength(1);
+});
 
 /** gateOf is a wait a test opens: what waits for its promise goes on once open is called. */
 function gateOf() {

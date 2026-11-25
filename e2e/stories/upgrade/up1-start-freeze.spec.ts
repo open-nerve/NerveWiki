@@ -264,11 +264,11 @@ test("UP1 (page): an admin starts the upgrade in the notebook's settings and lan
   const planPath = wikiPagePath(workspace.slug, notebook.id, plan.id);
   const nodes = `**/api/v0/notebooks/${notebook.id}/nodes`;
   for (const [width, at] of [
-    [1440, await bannerPlaces(tab, planPath, nodes, 1440)],
-    [1280, await bannerPlaces(tab, planPath, nodes, 1280)],
-    [1024, await bannerPlaces(tab, planPath, nodes, 1024)],
-    [768, await bannerPlaces(tab, planPath, nodes, 768)],
-    [375, await bannerPlaces(tab, planPath, nodes, 375)],
+    [1440, await bannerPlaces(tab, planPath, nodes, "Plan", 1440)],
+    [1280, await bannerPlaces(tab, planPath, nodes, "Plan", 1280)],
+    [1024, await bannerPlaces(tab, planPath, nodes, "Plan", 1024)],
+    [768, await bannerPlaces(tab, planPath, nodes, "Plan", 768)],
+    [375, await bannerPlaces(tab, planPath, nodes, "Plan", 375)],
   ] as const) {
     expect(at.read, `the banner read at ${String(width)}, as it was on its way`).toEqual(at.loading);
   }
@@ -277,16 +277,19 @@ test("UP1 (page): an admin starts the upgrade in the notebook's settings and lan
   // page read has it, at 1440, 768 and 375, but for the lines its trail wraps to beyond the row's least height, 36 px
   // (the page's own, decision 946): the trail ends with who made the change and when, the author's name here some fifty
   // characters: it is one line at 1440 alone.
-  const made = (await listChangesets(api, pat, notebook.id)).data?.data.at(-1)?.id;
+  const made = (await listChangesets(api, pat, notebook.id)).data?.data.at(-1);
   if (made === undefined) {
     throw new Error("the notebook's history lists no changeset");
   }
-  const madePath = changesetPath(workspace.slug, notebook.id, made);
-  const changeset = `**/api/v0/changesets/${made}`;
+  // The page made: its title is its kind and who made it.
+  expect(made.kind).toBe("edit");
+  const madeTitle = `Edit · ${made.created_by.display_name}`;
+  const madePath = changesetPath(workspace.slug, notebook.id, made.id);
+  const changeset = `**/api/v0/changesets/${made.id}`;
   for (const [width, at] of [
-    [1440, await bannerPlaces(tab, madePath, changeset, 1440)],
-    [768, await bannerPlaces(tab, madePath, changeset, 768)],
-    [375, await bannerPlaces(tab, madePath, changeset, 375)],
+    [1440, await bannerPlaces(tab, madePath, changeset, madeTitle, 1440)],
+    [768, await bannerPlaces(tab, madePath, changeset, madeTitle, 768)],
+    [375, await bannerPlaces(tab, madePath, changeset, madeTitle, 375)],
   ] as const) {
     const wrapped = Math.max(0, at.trail - 36);
     expect(
@@ -299,9 +302,9 @@ test("UP1 (page): an admin starts the upgrade in the notebook's settings and lan
   const gonePath = trashPath(workspace.slug, notebook.id, gone.id);
   const item = `**/api/v0/nodes/${gone.id}/trash-item`;
   for (const [width, at] of [
-    [1440, await bannerPlaces(tab, gonePath, item, 1440)],
-    [768, await bannerPlaces(tab, gonePath, item, 768)],
-    [375, await bannerPlaces(tab, gonePath, item, 375)],
+    [1440, await bannerPlaces(tab, gonePath, item, "Gone", 1440)],
+    [768, await bannerPlaces(tab, gonePath, item, "Gone", 768)],
+    [375, await bannerPlaces(tab, gonePath, item, "Gone", 375)],
   ] as const) {
     expect(at.read, `a preview's banner read at ${String(width)}, as it was on its way`).toEqual(at.loading);
   }
@@ -319,10 +322,11 @@ async function placeOf(banner: Locator): Promise<{ x: number; y: number; width: 
 
 /**
  * bannerPlaces opens path on page at width, the read of held (a glob of its address: a notebook's tree, a changeset)
- * held until the banner is measured on its way, then measures it again once the page is read, its title shown: where
- * the upgrade's banner is in either, and how high the trail read is, in CSS pixels.
+ * held until the banner is measured on its way, then measures it again once the page is read, its title shown, that
+ * title, not "Page not found" (P5S2A-N2): where the upgrade's banner is in either, and how high the trail read is, in
+ * CSS pixels.
  */
-async function bannerPlaces(page: Page, path: string, held: string, width: number) {
+async function bannerPlaces(page: Page, path: string, held: string, title: string, width: number) {
   await page.setViewportSize({ width, height: 900 });
   let release: (() => void) | undefined;
   const answered = new Promise<void>((resolve) => {
@@ -341,7 +345,8 @@ async function bannerPlaces(page: Page, path: string, held: string, width: numbe
     await expect(main.getByRole("heading", { level: 1 })).toHaveCount(0);
     const loading = await placeOf(banner);
     release?.();
-    await expect(main.getByRole("heading", { level: 1 }).first()).toBeVisible();
+    // The first: a page's content may have its title as a heading too.
+    await expect(main.getByRole("heading", { level: 1, name: title, exact: true }).first()).toBeVisible();
     const trail = await main.getByRole("navigation", { name: "Breadcrumb", exact: true }).boundingBox();
     return { loading, read: await placeOf(banner), trail: trail?.height ?? 0 };
   } finally {
