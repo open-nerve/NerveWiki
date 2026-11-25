@@ -84,7 +84,10 @@ const rows: [string, () => Promise<Row>, ((row: HTMLElement) => Promise<void>)?]
       // Its text takes the room Restore leaves, Restore on the right, below it on the right too (review B's P5B-M6).
       const text = within(row).getByRole("link").closest("p")?.parentElement;
       expect(classesOf(text)).toEqual(expect.arrayContaining(["min-w-0", "flex-1", "basis-56"]));
-      expect(classesOf(within(row).getByRole("button", { name: /^Restore/ }))).toContain("ms-auto");
+      const restore = within(row).getByRole("button", { name: /^Restore/ });
+      expect(classesOf(restore)).toContain("ms-auto");
+      // The link first, then Restore (4.2.7): two Tabs from one row's Restore reach the next one's either way.
+      expect(within(row).getByRole("link").compareDocumentPosition(restore)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     },
   ],
   [
