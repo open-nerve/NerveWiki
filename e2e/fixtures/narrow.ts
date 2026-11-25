@@ -35,10 +35,20 @@ export async function expectFits(page: Page, ...boxes: Locator[]): Promise<void>
 /**
  * expectButtonsInside checks, by their boxes and not by a font (05-lessons 6), that each button of box keeps inside
  * its border and padding: a row of them to the right that cannot wrap sticks out of its left at a narrow width
- * (M13/P5/S3, decision 958; review B's P5S3B-I1). Within half a pixel: a centred dialog lies on fractions of one, and
- * Chromium and WebKit put a button 0.07 px past the padding they lay it against.
+ * (M13/P5/S3, decision 958; review B's P5S3B-I1). A dialog pops in scaled (styles.css's pop-in, 0.97 to 1 in 150 ms)
+ * while its border and padding read unscaled, which put a button up to 0.75 px past the padding: what runs on box or
+ * above it, and ends, is let end first (as openDrawer does), then the edges are compared as they are (review C's
+ * P5S3C-F1-I1; not an engine's rounding, as said before).
  */
 export async function expectButtonsInside(box: Locator): Promise<void> {
+  await box.evaluate((element) => {
+    const running: Animation[] = [];
+    for (let at: Element | null = element; at !== null; at = at.parentElement) {
+      running.push(...at.getAnimations().filter((animation) => animation.effect?.getTiming().iterations !== Infinity));
+    }
+    // A dialog closed meanwhile cancels its animation: finished then rejects, and there is nothing to wait for.
+    return Promise.all(running.map((animation) => animation.finished.catch(() => undefined)));
+  });
   const placed = await box.evaluate((element) => {
     const style = getComputedStyle(element);
     const rect = element.getBoundingClientRect();
@@ -53,7 +63,7 @@ export async function expectButtonsInside(box: Locator): Promise<void> {
   });
   expect(placed.buttons.length, `the buttons of ${String(box)}`).toBeGreaterThan(0);
   for (const button of placed.buttons) {
-    expect(button.left, `${button.name}'s left, inside ${String(box)}`).toBeGreaterThanOrEqual(placed.left - 0.5);
-    expect(button.right, `${button.name}'s right, inside ${String(box)}`).toBeLessThanOrEqual(placed.right + 0.5);
+    expect(button.left, `${button.name}'s left, inside ${String(box)}`).toBeGreaterThanOrEqual(placed.left);
+    expect(button.right, `${button.name}'s right, inside ${String(box)}`).toBeLessThanOrEqual(placed.right);
   }
 }

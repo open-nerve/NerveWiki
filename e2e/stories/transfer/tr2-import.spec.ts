@@ -250,14 +250,16 @@ test("TR2 (page): a vault imports from the notebook's settings, at its root and 
     await dialog
       .getByLabel("Zip archive")
       .setInputFiles({ name: "again.zip", mimeType: "application/zip", buffer: vault() });
-    await dialog.getByRole("button", { name: "Import", exact: true }).click();
-    await expect(dialog.getByRole("button", { name: "Stop the upload" })).toBeVisible();
-    await expect.poll(() => routed.length).toBe(1);
     // 320 wide, while it uploads, Stop the upload and Uploading… inside the dialog, a line each, as one line holds not
-    // both (decision 958, extended to the dialog's own buttons); then the two buttons of what it asks inside its box
-    // (decision 958; review B's P5S3B-I1).
+    // both (decision 958, extended to the dialog's own buttons): Stop comes under where Import was, and a double click
+    // on Import starts the upload, its second click on Stop stopping nothing (review A's P5S3A-F1-M1); going back
+    // asks, which it does while the upload goes on. Then the two buttons of what it asks inside its box (decision 958;
+    // review B's P5S3B-I1).
     const wide = page.viewportSize() ?? { width: 1280, height: 720 };
     await page.setViewportSize({ width: 320, height: 800 });
+    await dialog.getByRole("button", { name: "Import", exact: true }).dblclick();
+    await expect(dialog.getByRole("button", { name: "Stop the upload" })).toBeVisible();
+    await expect.poll(() => routed.length).toBe(1);
     await expectButtonsInside(dialog);
     await page.goBack();
     const asking = dialog.getByRole("alert");

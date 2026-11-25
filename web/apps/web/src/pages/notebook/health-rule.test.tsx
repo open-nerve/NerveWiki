@@ -292,16 +292,18 @@ test("a successful refresh removes old expanded items and retained card errors t
   expect(renewed.getByRole("button", { name: "More" })).toBeTruthy();
 });
 
-/** endsOf is the rule's card's first and last children: the first's tag and classes, the last's tag. */
+/** endsOf is the rule's card's first two children and its last: their tags, and the second's classes. */
 function endsOf(rule: string) {
   const card = document.getElementById(rule);
-  return [rule, card?.firstElementChild?.tagName, card?.firstElementChild?.className, card?.lastElementChild?.tagName];
+  const [first, second] = card?.children ?? [];
+  return [rule, first?.tagName, second?.tagName, second?.className, card?.lastElementChild?.tagName];
 }
 
-// M13/P5/S3 (review B's P5S3B-M1, N1): what a card tells a screen reader its first child, so that the margin space-y-2
-// puts under all but the last child falls under no block one sees: 17px above and below, More there or not (B's f1).
-// Its More a card's small pill, as the versions' More (00-M13 4.3).
-test("a rule's card tells a screen reader first and ends with what one sees; its More a small pill", async () => {
+// M13/P5/S3 (review B's P5S3B-M1, N1): what a card tells a screen reader not its last child, so that the margin
+// space-y-2 puts under all but the last child falls under no block one sees: 17px above and below, More there or not
+// (B's f1); its second, after the title, which a screen reader entering the card reads first (review A's
+// P5S3A-F1-N1). Its More a card's small pill, as the versions' More (00-M13 4.3).
+test("a rule's card tells a screen reader after its title and ends with what one sees; its More a small pill", async () => {
   await opened();
   const rules = [
     "wanted",
@@ -314,7 +316,13 @@ test("a rule's card tells a screen reader first and ends with what one sees; its
     "invalid_sources",
   ];
   expect(rules.map(endsOf)).toEqual(
-    rules.map((rule) => [rule, "OUTPUT", "sr-only", ["wanted", "missing_summary"].includes(rule) ? "FIELDSET" : "P"])
+    rules.map((rule) => [
+      rule,
+      "H2",
+      "OUTPUT",
+      "sr-only",
+      ["wanted", "missing_summary"].includes(rule) ? "FIELDSET" : "P",
+    ])
   );
   expect(wanted().getByRole("button", { name: "More" }).className).toBe(
     buttonClass({ variant: "outline", size: "sm", shape: "pill" })

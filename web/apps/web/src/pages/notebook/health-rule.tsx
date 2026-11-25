@@ -240,9 +240,6 @@ export const HealthRule = observer(function HealthRule({
       aria-labelledby={`${summary.rule}-heading`}
       className="min-w-0 space-y-2 rounded-card border border-border bg-surface px-4.5 py-4"
     >
-      {/* What it tells a screen reader first: the margin space-y-2 gives all but the last child falls under no block
-          one sees, the card 17px above and below, More there or not (review B's P5S3B-M1). */}
-      <output className="sr-only">{card.told + (card.again ? String.fromCharCode(0xa0) : "")}</output>
       <Heading
         ref={heading}
         id={`${summary.rule}-heading`}
@@ -251,6 +248,10 @@ export const HealthRule = observer(function HealthRule({
       >
         {title}
       </Heading>
+      {/* What it tells a screen reader not last: the margin space-y-2 gives all but the last child falls under no block
+          one sees, the card 17px above and below, More there or not (review B's P5S3B-M1); after the title, which a
+          screen reader entering the card reads first (review A's P5S3A-F1-N1). */}
+      <output className="sr-only">{card.told + (card.again ? String.fromCharCode(0xa0) : "")}</output>
       <p className={factsClass}>
         {t(summary.rule === "orphans" && mode === "llm_wiki" ? "health.orphansDescriptionWiki" : text.description)}
       </p>

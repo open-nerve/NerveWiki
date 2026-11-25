@@ -396,7 +396,20 @@ const ImportForm = observer(function ImportForm({
           958, extended). */}
       <div className="flex flex-wrap justify-end gap-2">
         {sending ? (
-          <Button key="stop" ref={stopButton} type="button" variant="outline" onClick={() => upload.current?.abort()}>
+          <Button
+            key="stop"
+            ref={stopButton}
+            type="button"
+            variant="outline"
+            onClick={(event) => {
+              // At 320 its row wraps and this comes under where Import was: the second click of a double one on Import
+              // stops nothing (review A's P5S3A-F1-M1), as Cancel's does. A key's click has no count (0).
+              if (event.detail > 1) {
+                return;
+              }
+              upload.current?.abort();
+            }}
+          >
             {t("transfer.importStop")}
           </Button>
         ) : (

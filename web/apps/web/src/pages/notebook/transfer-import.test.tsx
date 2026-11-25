@@ -522,6 +522,26 @@ test("a double click on Stop the upload stops it, and the dialog stays with the 
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 });
 
+// At 320, English, Stop the upload and Uploading… a line each (decision 958): Stop comes under where Import was, and
+// the second click of a double one on Import falls on it (review A's P5S3A-F1-M1). It stops nothing; a click, or a
+// key's (its count 0), stops the upload.
+test("the second click of a double one on Import, falling on Stop the upload, stops nothing; a click or a key's does", async () => {
+  const user = userEvent.setup();
+  const server = jobsServer({ answers: { [imports]: () => new Promise<Response>(() => undefined) } });
+  renderApp(transfer, server.app);
+  const shown = await open(user);
+  await user.upload(within(shown).getByLabelText("Zip archive"), vault());
+  fireEvent.click(within(shown).getByRole("button", { name: "Import" }), { detail: 1 });
+  await waitFor(() => expect(transfers(server.app).length).toBe(1));
+
+  fireEvent.click(within(shown).getByRole("button", { name: "Stop the upload" }), { detail: 2 });
+  expect(transfers(server.app)[0]?.aborted).toBe(false);
+  expect(within(shown).getByRole("button", { name: "Stop the upload" })).toBeTruthy();
+  fireEvent.click(within(shown).getByRole("button", { name: "Stop the upload" }), { detail: 0 });
+  await waitFor(() => expect(transfers(server.app)[0]?.aborted).toBe(true));
+  expect(within(shown).getByRole("button", { name: "Import" }).hasAttribute("disabled")).toBe(false);
+});
+
 test("an import's report counts what it skipped, not missing files, and says what was not imported as it was", async () => {
   const user = userEvent.setup();
   const counts = { pages: 5, attachments: 3, renamed: 1, missing: 0, skipped: 2 };
