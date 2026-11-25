@@ -4,7 +4,7 @@
 |---|---|
 | 里程碑 | M13 界面焕新（`M13-ui-refresh`） |
 | 日期 | 2026-11-22（初稿；同日照三份设计审查修订、照修订核对第 1 轮再修订、第 2 轮之后补上最后的 Nit，[审查记录](reviews/M13-design-review.md)） |
-| 状态 | 设计定稿，负责人 2026-11-22 批准；P1 完成；P2 完成；P3 完成；P4 完成；P5 设计定稿，S1 已审查、待合并 |
+| 状态 | 设计定稿，负责人 2026-11-22 批准；P1 完成；P2 完成；P3 完成；P4 完成；P5 设计定稿，S1 已合并 |
 | 依赖 | M0–M12 全部（改的是它们的网页）；M12 的发布等 M13 收尾之后再做（负责人 2026-11-22 第 5 问，第 11 节） |
 | 上级文档 | [v0.1 总体设计](../v0.1-design.md) 第 9、10、12、13.2、13.4 节；[M12 总设计](../M12-release/00-M12-design.md) 第 7 节"提交说明"、第 12 节"收尾与发布"一行；移交 [v0.2/handoffs/M12-polish.md](../../v0.2/handoffs/M12-polish.md)、[v0.1.1/handoffs/M12-after-release.md](../../v0.1.1/handoffs/M12-after-release.md) |
 | 视觉参照 | 负责人认可的三份样稿：[mockups/palette.html](mockups/palette.html)（外框与配色，选"琥珀"）、[mockups/settings.html](mockups/settings.html)（设置，选 A）、[mockups/reading.html](mockups/reading.html)（阅读与编辑）。浏览器直接打开，自带切换。样稿是外观的依据，不是代码：间距、色值、字号照它；结构、行为与可访问性照本文与 13.2；本文与样稿不同之处（例如属性条、焦点圈、编辑时的"保存"）在正文写明并以本文为准；阅读视图的色值以 reading.html 为准 |
@@ -548,7 +548,7 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
 | P2 新外框（S1–S3） | [02-P2](02-P2-shell.md) | 完成 | [设计审查](reviews/P2-design-review.md)；[S1](reviews/P2-S1-shell-account-review.md)；[S2](reviews/P2-S2-notebooks-tree-review.md)；[S3](reviews/P2-S3-search-drawer-review.md) | S1 `fdad6b9e`；S2 `70338fc4`；S3 `82838aac` |
 | P3 设置界面（S1、S2） | [03-P3](03-P3-settings.md) | 完成 | [设计审查](reviews/P3-design-review.md)；[S1](reviews/P3-S1-settings-mode-review.md)；[S2](reviews/P3-S2-workspace-notebook-settings-review.md) | S1 `f32b0762`；S2 `12b0b734` |
 | P4 阅读与编辑（S1–S3） | [04-P4](04-P4-reading.md) | 完成 | [设计审查](reviews/P4-design-review.md)；[S1](reviews/P4-S1-head-strip-panel-review.md)；[S2](reviews/P4-S2-body-code-diagrams-review.md)；[S3](reviews/P4-S3-editor-outline-save-review.md) | S1 `715923dd`；S2 `cea66d69`；S3 `4f2fde3b`；CI 的两处 `9871c7d4` |
-| P5 其余页面（S1–S3） | [05-P5](05-P5-pages.md) | 设计定稿；S1 已审查、待合并 | [设计审查](reviews/P5-design-review.md)；[S1](reviews/P5-S1-homes-entry-review.md) | S1 `<待填>` |
+| P5 其余页面（S1–S3） | [05-P5](05-P5-pages.md) | 设计定稿；S1 已合并 | [设计审查](reviews/P5-design-review.md)；[S1](reviews/P5-S1-homes-entry-review.md) | S1 `326034d3` |
 | 收尾 | — | 未开始 | — | — |
 
 ## 13. 变更记录
@@ -578,4 +578,4 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
 - 2026-11-25：P4 完成（S1 `715923dd`、S2 `cea66d69`、S3 `4f2fde3b`；主持者的决定 854–911；本机门禁替代分支 CI，负责人推送之后 CI 在最后一个头上补跑，决定 746、761；只靠 CI 的步骤见 [04-P4](04-P4-reading.md) 7.3：Linux 的 WebKit 与 Firefox 上剪贴板的读法，Linux 的字体与滚动条下 PG17 的 `expectFits`、右栏的量、第 2 格的行数上限、第 3 格的项高与长标题的行数，Linux 的 Chromium 第一次跑 `emulateMedia({ forcedColors })`（L4 的一步），L5 的查找面板与强制色两步在 Linux 的字体下；还欠负责人的人工核对：Safari 里焦点在显着的"保存"上时切到别的窗口再回来，它不隐去（04-P4 第 9 节"负责人"一条））。
 - 2026-11-25：分支第一次推送之后 CI 跑出的两处修好（[04-P4](04-P4-reading.md) 10.4；合并 `9871c7d4`）：PG17 第 2 格 callout 标题的行数上限改为按当前浏览器的字体量，不数 macOS 的行数；e2e 的 `notebookGroups` 改为一次不等待的读，C8 的 poll 不再被读到一半卸下的列表卡住。只改测试，由主持者核对。
 - 2026-11-25：照 P5 的设计修订（[05-P5](05-P5-pages.md) 2.1；[设计审查](reviews/P5-design-review.md)，主持者的决定 912–945）：P5 分成三个 Step（第 7 节的开头、表与"总体设计的修订"第 1 条的注，第 9 节的两处）；4.2.3 已登录的邀请页的"回到工作区"；4.3"加载"不加骨架；4.6 的虚线卡、文档类的三页与导入导出、出错页的去路；头的状态与第 12 节 P5 一行。
-- 2026-11-25：P5/S1 实施与审查完成（[审查记录](reviews/P5-S1-homes-entry-review.md)；主持者的决定 946–951：页读取中与页不在时的列照读到之后的页排，卡片里的徽记紧跟名字，入口卡片里的正文一律 14 px，居中的操作是小胶囊，总体设计 9.2 的空状态那一句在 S1 只说两个首页与设置，`PageColumn` 只给页的两支留右栏的地方）；4.8 的 UI1 另两格在三种浏览器里核对两个首页、入口的卡片、邀请页与 404 在 375 与 320 宽，UP1 另核对横幅在页读到之前与之后同一处；合并 `<待填>`。
+- 2026-11-25：P5/S1 实施与审查完成（[审查记录](reviews/P5-S1-homes-entry-review.md)；主持者的决定 946–951：页读取中与页不在时的列照读到之后的页排，卡片里的徽记紧跟名字，入口卡片里的正文一律 14 px，居中的操作是小胶囊，总体设计 9.2 的空状态那一句在 S1 只说两个首页与设置，`PageColumn` 只给页的两支留右栏的地方）；4.8 的 UI1 另两格在三种浏览器里核对两个首页、入口的卡片、邀请页与 404 在 375 与 320 宽，UP1 另核对横幅在页读到之前与之后同一处；合并 `326034d3`。
