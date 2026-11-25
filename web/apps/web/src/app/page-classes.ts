@@ -63,12 +63,13 @@ export const filterChipClass =
 
 /**
  * What a row offers besides its own link, seen as the row is hovered or holds the keyboard's focus, or as its menu is
- * open; always where nothing hovers, on a narrow screen, and in forced colours (decision 927). Transparent, not
- * hidden: Playwright clicks what it sees, and a transparent control is seen. Its transition names opacity and the
- * button's colours both, as the tree's cog does: cn would let transition-opacity take transition-colors' place.
+ * open; always where nothing hovers or a finger may point (as the tree's ⋯, decision 953), on a narrow screen, and in
+ * forced colours (decision 927). Transparent, not hidden: Playwright clicks what it sees, and a transparent control is
+ * seen. Its transition names opacity and the button's colours both, as the tree's cog does: cn would let
+ * transition-opacity take transition-colors' place.
  */
 export const revealClass =
-  "opacity-0 transition-[opacity,color,background-color] duration-150 group-hover/row:opacity-100 group-focus-within/row:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100 [@media(hover:none)]:opacity-100 max-md:opacity-100 forced-colors:opacity-100";
+  "opacity-0 transition-[opacity,color,background-color] duration-150 group-hover/row:opacity-100 group-focus-within/row:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100 [@media(hover:none)]:opacity-100 any-pointer-coarse:opacity-100 max-md:opacity-100 forced-colors:opacity-100";
 
 /**
  * The head's right on a document's page: what the page does (Restore this version, Undo change); the page's own is

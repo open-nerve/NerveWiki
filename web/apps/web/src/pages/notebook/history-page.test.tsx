@@ -1110,11 +1110,11 @@ test.each<[string, string, string]>([
   }
 );
 
-// M13/P5/S2 (decision 927): Only this person is what a row offers besides its link: transparent at rest, shown as its
-// row is hovered or holds the keyboard's focus, or as it has it itself; always where nothing hovers, on a narrow screen
-// and in forced colours. jsdom lays out nothing: the classes are held here, what they do by hi3 and mc3 (no story has a
-// device that hovers not, review C's P5C-R1-M2).
-test("Only this person is shown as its row is hovered or focused, and always where nothing hovers, on a narrow screen and in forced colours; a small pill, its transition its colours' too", async () => {
+// M13/P5/S2 (decisions 927, 953): Only this person is what a row offers besides its link: transparent at rest, shown
+// as its row is hovered or holds the keyboard's focus, or as it has it itself; always where nothing hovers or a finger
+// may point (as the tree's ⋯), on a narrow screen and in forced colours. jsdom lays out nothing: the classes are held
+// here, what they do by hi3 and mc3 (no story has a device that hovers not, review C's P5C-R1-M2).
+test("Only this person is shown as its row is hovered or focused, and always where nothing hovers or a finger may point, on a narrow screen and in forced colours; a small pill, its transition its colours' too", async () => {
   const { server } = logged();
   renderApp(historyPath, server.app);
   const only = await screen.findByRole("button", { name: "Only this person (Bob)" });
@@ -1127,6 +1127,7 @@ test("Only this person is shown as its row is hovered or focused, and always whe
       "focus-visible:opacity-100",
       "aria-expanded:opacity-100",
       "[@media(hover:none)]:opacity-100",
+      "any-pointer-coarse:opacity-100",
       "max-md:opacity-100",
       "forced-colors:opacity-100",
       // cn would have let transition-opacity take the button's transition-colors' place (review A's P5A-N2).

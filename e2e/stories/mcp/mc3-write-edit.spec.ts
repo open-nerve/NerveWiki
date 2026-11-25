@@ -198,7 +198,9 @@ test(
     await goto(page, historyPath(workspace.slug, notebook.id));
     const listed = historyListed(page);
     await expect(listed).toHaveCount(3);
-    // On a narrow screen a row's Only this person shows at rest (M13/P5/S2, decision 927: max-md).
+    // On a narrow screen a row's Only this person shows at rest (M13/P5/S2, decision 927: max-md), the pointer on no
+    // row (P5S2C-N3).
+    await page.mouse.move(0, 0);
     await expect(listed.first().getByRole("button", { name: /^Only this person/ })).toHaveCSS("opacity", "1");
     const wrapper = (label: string) => main.getByLabel(label, { exact: true }).locator("xpath=..");
     await expectFits(
