@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import {
   DropdownMenu,
@@ -132,3 +132,50 @@ test("a submenu opens from its item, by the keyboard too, and animates in, never
   await waitFor(() => expect(screen.queryAllByRole("menu")).toEqual([]));
   await waitFor(() => expect(document.activeElement).toBe(trigger));
 });
+
+// M13 closeout (review B's M13CB-F1-M1): Radix presses an item on keydown, a repeat's too. Enter held on a menu's
+// button opened the menu, and its repeats pressed the first item, focused: the tree's New subpage made pages, an
+// attachment's Open opened tabs, the menu opening again after each. A repeat of Enter or Space presses no item, nor a
+// choice; a new press does.
+test.each([
+  ["Enter", "{Enter>4}", "{/Enter}{Enter}"],
+  ["Space", "[Space>4]", "[/Space][Space]"],
+] as const)(
+  "%s held on a menu's button opens the menu, its repeats pressing no item; pressed again, it presses the item focused once",
+  async (_, held, again) => {
+    const user = userEvent.setup();
+    const pressed = vi.fn();
+    const chosen = vi.fn();
+    render(
+      <DropdownMenu>
+        <DropdownMenuTrigger>Actions</DropdownMenuTrigger>
+        <DropdownMenuContent>
+          <DropdownMenuItem onSelect={pressed}>New subpage</DropdownMenuItem>
+          <DropdownMenuRadioGroup value="light" onValueChange={chosen}>
+            <DropdownMenuRadioItem value="dark">Dark</DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+    const trigger = screen.getByRole("button", { name: "Actions" });
+    trigger.focus();
+
+    await user.keyboard(held);
+    const first = screen.getByRole("menuitem", { name: "New subpage" });
+    expect(document.activeElement).toBe(first);
+    expect(screen.getAllByRole("menu")).toHaveLength(1);
+    expect(pressed).not.toHaveBeenCalled();
+    await user.keyboard(again);
+    expect(pressed).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.queryAllByRole("menu")).toEqual([]));
+
+    // A choice, held, is chosen once.
+    await user.click(trigger);
+    const dark = await screen.findByRole("menuitemradio", { name: "Dark" });
+    dark.focus();
+    await user.keyboard(held);
+    expect(chosen).toHaveBeenCalledTimes(1);
+    expect(chosen).toHaveBeenCalledWith("dark");
+    expect(pressed).toHaveBeenCalledTimes(1);
+  }
+);

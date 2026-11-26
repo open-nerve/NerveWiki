@@ -26,6 +26,9 @@ const REQUIRED = [
   // The tree's row menu and the row shown brought into the column are each engine's (M13/P2/S2, decision 789).
   ["firefox", "page/pg16-tree-menu.spec.ts", "PG16 (page): a row's menu in the tree"],
   ["webkit", "page/pg16-tree-menu.spec.ts", "PG16 (page): a row's menu in the tree"],
+  // The column's middle no stop of Tab, which Firefox alone made it, is Firefox's (M13 closeout, review A's M13CA-M3;
+  // fix check 1, review C's M13CC-F1-N1).
+  ["firefox", "page/pg16-tree-menu.spec.ts", "PG16 (page): the page shown has its row brought"],
   // The page's head, its right column and their focus are each engine's (M13/P4/S1, decision 879).
   ["firefox", "page/pg17-page-head.spec.ts", "PG17 (page): the page's head says"],
   ["webkit", "page/pg17-page-head.spec.ts", "PG17 (page): the page's head says"],
