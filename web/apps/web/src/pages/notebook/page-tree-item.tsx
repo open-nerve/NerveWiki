@@ -1,4 +1,4 @@
-import { Bot, ChevronRight, Ellipsis, File, FileText, Library } from "lucide-react";
+import { Bot, ChevronRight, Ellipsis, FileText, Library } from "lucide-react";
 import { computed, type IObservableValue } from "mobx";
 import { observer } from "mobx-react-lite";
 import {
@@ -22,6 +22,7 @@ import { writesNotebook } from "../../app/effective-role";
 import { lockedText } from "../../app/problem-messages";
 import { useShownRows } from "../../app/shown-rows";
 import { canAddSource, canDeleteNode, canManageNode, isAgentsPage } from "../../app/source-permissions";
+import { PageIcon } from "../../components/page-icon";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -326,7 +327,7 @@ const PageRow = memo(function PageRow({
           {sourceRoot && <Library aria-hidden className={icon} />}
           {source && <FileText aria-hidden className={icon} />}
           {/* An ordinary page's (M5-polish 37): its name at 55px, as the Directory and History rows' are. */}
-          {!agents && !sourceRoot && !source && <File aria-hidden className={icon} />}
+          {!agents && !sourceRoot && !source && <PageIcon className={icon} />}
           {/* Cut short, its whole as its title: on its text, not on the link, whose name it is (M13 closeout, review
               A's M13CA-M1). */}
           <span title={name}>{name}</span>

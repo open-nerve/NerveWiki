@@ -42,6 +42,12 @@ test("Ctrl+O opens it instead of the browser's Open File; it finds by title, Dow
     ["Linux", "Guide / Install"],
     ["Notes", ""],
   ]);
+  // A page's icon, the tree's (M13 closeout, decision 969).
+  expect(
+    within(dialog)
+      .getAllByRole("option")
+      .map((option) => /\blucide-[\w-]+/.exec(option.querySelector("svg")?.getAttribute("class") ?? "")?.[0])
+  ).toEqual(["lucide-file", "lucide-file", "lucide-file", "lucide-file"]);
 
   // What is typed starts the list anew, its first option active.
   await user.keyboard("{ArrowDown}{ArrowDown}");

@@ -1,4 +1,3 @@
-import { File, ScrollText } from "lucide-react";
 import { observer } from "mobx-react-lite";
 import { useRef, useState, type Ref } from "react";
 import { Link } from "react-router";
@@ -10,6 +9,7 @@ import { useMounted } from "../../app/mounted";
 import { factsClass, lineLinkClass, lineTitleClass, splitRowClass } from "../../app/page-classes";
 import { errorText } from "../../app/problem-messages";
 import { listTextClass } from "../../app/settings-page";
+import { PageIcon } from "../../components/page-icon";
 import { Button } from "../../components/ui/button";
 import { formatDateTime, formatRelative } from "../../i18n/format";
 import { useT, type Translate } from "../../i18n/i18n";
@@ -278,13 +278,9 @@ export function namesOf(item: TrashItem, twin: Twin, t: Translate, locale: Local
  */
 export function ItemIcon({ item, className }: { item: TrashItem; className?: string }) {
   if (item.kind === "page") {
-    return <ScrollText aria-hidden className={cn("mt-0.5 size-4 shrink-0 self-start text-faint", className)} />;
+    return <PageIcon className={cn("mt-0.5 self-start text-faint", className)} />;
   }
-  return item.asset === null ? (
-    <File aria-hidden className={cn("mt-0.5 size-4 shrink-0 self-start text-faint", className)} />
-  ) : (
-    <AssetIcon mime={item.asset.mime} className={cn("mt-0.5 self-start", className)} />
-  );
+  return <AssetIcon mime={item.asset?.mime} className={cn("mt-0.5 self-start", className)} />;
 }
 
 /**

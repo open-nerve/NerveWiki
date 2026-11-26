@@ -105,6 +105,8 @@ test("the results list the names' hits, then the contents', each with its kind's
   expect(pageLink.querySelector("mark")?.className).toContain("nw-hit");
   expect(pageLink.querySelector("bdi")).not.toBeNull();
   expect(page?.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
+  // A page's icon, the tree's; an attachment's its kind's (M13 closeout, decision 969).
+  expect(page?.querySelector("svg")?.classList.contains("lucide-file")).toBe(true);
   expect(page?.textContent).toContain("Plans");
   expect(within(page as HTMLElement).getByTitle("Oct 5, 2026, 8:50 AM").textContent).toBe("1 hour ago");
   // Its content holds no hit: no excerpt.
@@ -113,6 +115,7 @@ test("the results list the names' hits, then the contents', each with its kind's
   const attachmentLink = within(attachment as HTMLElement).getByRole("link", { name: "数据库备份.pdf" });
   expect(marks(attachmentLink)).toEqual(["数据库"]);
   expect(attachment?.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
+  expect(attachment?.querySelector("svg")?.classList.contains("lucide-file-type")).toBe(true);
   expect(attachmentLink.getAttribute("href")).toBe(pagePath(install.id));
   expect(attachment?.textContent).toContain("Plans / Guide / Install");
   expect(attachment?.textContent).toContain("PDF · 1 KiB");
@@ -948,4 +951,16 @@ test("an address without q says how to search with an icon", async () => {
   });
   expect(said.previousElementSibling?.getAttribute("aria-hidden")).toBe("true");
   expect(said.previousElementSibling?.querySelector("svg")).not.toBeNull();
+});
+
+// A hit of an attachment the search has no record of is another file's, a paperclip: File is a page's alone (M13
+// closeout, decision 969).
+test("a hit of an attachment without its record has another file's icon, not a page's", async () => {
+  const hit: SearchHit = { ...hitOf(notes), node: { ...hitOf(notes).node, kind: "asset", name: "scan.bin" } };
+  const answer: SearchPage = { data: [hit], next_cursor: null, count: { value: 1, kind: "exact" }, building: false };
+  renderApp(searchPath("scan"), searched({ "GET /api/v0/workspaces/lab/search": () => json(answer) }).app);
+
+  await screen.findByRole("list", { name: "Search results" });
+  const [row] = hits();
+  expect(row?.querySelector("p svg")?.classList.contains("lucide-paperclip")).toBe(true);
 });

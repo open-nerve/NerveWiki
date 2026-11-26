@@ -244,6 +244,14 @@ test.each([
   expect(icon(await within(await tree()).findByRole("link", { name }))).toBe(kind);
 });
 
+// A source's icon, which only it has: an attachment's PDF is no longer FileText (M13 closeout, decision 969).
+test("an LLM Wiki's source has its kind's icon in the tree", async () => {
+  const clipping = pageNode(7, "Clipping", raw);
+  renderApp(pagePath(clipping.id), wikiServer("editor", [raw, agents, clipping]).app);
+
+  expect(icon(await within(await tree()).findByRole("link", { name: "Clipping (source)" }))).toBe("lucide-file-text");
+});
+
 // Followed as the tree's pages are, decided as they are clicked (M13/P2/S3, decision 782): opened, the address shown
 // replacing its entry; a click with a modifier the browser's, a new tab's.
 test("an LLM Wiki's Directory and History rows are followed as its pages are: opened, the address shown replaced; a click with a modifier is the browser's", async () => {

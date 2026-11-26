@@ -42,7 +42,9 @@ test("a preview is headed as a page is, its title a long name broken in a span o
   const name = title.querySelector("span.wrap-anywhere") as HTMLElement;
   expect(name.textContent).toBe(longName);
   expect(name.classList.contains("min-w-0")).toBe(true);
-  expect([...(title.querySelector("svg")?.classList ?? [])]).toEqual(expect.arrayContaining(["size-6", "mt-1.5"]));
+  expect([...(title.querySelector("svg")?.classList ?? [])]).toEqual(
+    expect.arrayContaining(["size-6", "mt-1.5", "lucide-file"])
+  );
   const trail = screen.getByRole("navigation", { name: "Breadcrumb" });
   expect(trail.parentElement?.className).toBe(headCrumbsClass);
   expect(trail.parentElement?.parentElement?.className).toBe(headRowClass);

@@ -1,4 +1,4 @@
-import { FileText, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { observer } from "mobx-react-lite";
 import { useState } from "react";
 import useSWR from "swr";
@@ -12,6 +12,7 @@ import { listColumnClass, titleRowClass, titleTextClass } from "../../app/page-c
 import { errorText } from "../../app/problem-messages";
 import { pageTitleClass } from "../../app/settings-page";
 import { EmptyState } from "../../components/empty-state";
+import { PageGlyph } from "../../components/page-icon";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { useT } from "../../i18n/i18n";
@@ -76,7 +77,7 @@ export const NotebookHomePage = observer(function NotebookHomePage() {
         <NotLoaded error={error} retry={() => void mutate()} />
       ) : roots.length === 0 ? (
         // New page is in the title's row: the empty state offers none of its own.
-        <EmptyState icon={FileText}>{t("notebook.homeEmpty")}</EmptyState>
+        <EmptyState icon={PageGlyph}>{t("notebook.homeEmpty")}</EmptyState>
       ) : (
         <SubpageList
           label={t("notebook.pages")}

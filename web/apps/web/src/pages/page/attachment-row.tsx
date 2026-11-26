@@ -1,4 +1,14 @@
-import { Download, Ellipsis, File, FileAudio, FileImage, FileText, FileVideo, type LucideIcon } from "lucide-react";
+import {
+  Download,
+  Ellipsis,
+  FileAudio,
+  FileImage,
+  FileText,
+  FileType,
+  FileVideo,
+  Paperclip,
+  type LucideIcon,
+} from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, type Ref } from "react";
 
 import { revealClass } from "../../app/page-classes";
@@ -17,21 +27,25 @@ import { focusLost } from "../../lib/focus-leaving";
 import type { Asset } from "../../services/asset.service";
 import { useStore } from "../../stores/context";
 
-/** The icon of each kind of attachment: a type's, no preview (M7/P4 design 2). */
+/**
+ * The icon of each kind of attachment: a type's, no preview (M7/P4 design 2). None a page's or a source's: a PDF's
+ * FileType, another file's a paperclip (M13 closeout, decision 969).
+ */
 const icons: Record<AssetKind, LucideIcon> = {
   image: FileImage,
   audio: FileAudio,
   video: FileVideo,
-  pdf: FileText,
-  file: File,
+  pdf: FileType,
+  file: Paperclip,
 };
 
 /**
  * AssetIcon is the icon of the kind of an attachment of type mime, for the eye alone: the trash's preview and a search's
- * hits show it too, in the faint grey of their own icons (M13/P5/S2, review B's P5B-N2); className places it.
+ * hits show it too, in the faint grey of their own icons (M13/P5/S2, review B's P5B-N2); className places it. Of type
+ * unknown (mime undefined: a hit or a trash item without its attachment's record), another file's.
  */
-export function AssetIcon({ mime, className }: { mime: string; className?: string }) {
-  const Icon = icons[assetKind(mime)];
+export function AssetIcon({ mime, className }: { mime: string | undefined; className?: string }) {
+  const Icon = icons[mime === undefined ? "file" : assetKind(mime)];
   return <Icon aria-hidden className={cn("size-4 shrink-0 text-faint", className)} />;
 }
 

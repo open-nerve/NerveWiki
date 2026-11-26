@@ -1,10 +1,10 @@
-import { FileText } from "lucide-react";
 import { memo, useId, type MouseEvent } from "react";
 import { useNavigate } from "react-router";
 
 import { arrived } from "../../app/arrival";
 import { cardClass } from "../../app/settings-page";
 import { useShownRows } from "../../app/shown-rows";
+import { PageIcon } from "../../components/page-icon";
 import { useT } from "../../i18n/i18n";
 import { cn } from "../../lib/cn";
 import { linkFollowed } from "../../lib/link-click";
@@ -108,7 +108,7 @@ const SubpageRow = memo(function SubpageRow({
           count === undefined ? "pe-4.5" : "pe-16"
         )}
       >
-        <FileText aria-hidden className="size-4 shrink-0 text-faint" />
+        <PageIcon className="text-faint" />
         <span title={name} className="min-w-0 truncate">
           {name}
         </span>

@@ -1,4 +1,3 @@
-import { File } from "lucide-react";
 import { observer } from "mobx-react-lite";
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { useNavigate, useParams } from "react-router";
@@ -7,6 +6,7 @@ import useSWR from "swr";
 import { arrived } from "../../app/arrival";
 import { NotLoaded } from "../../app/not-loaded";
 import { dialogOpen, isMod } from "../../app/shortcuts";
+import { PageIcon } from "../../components/page-icon";
 import { Dialog, DialogContent, DialogTitle } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
 import { useT } from "../../i18n/i18n";
@@ -176,7 +176,7 @@ const Finder = observer(function Finder({ notebook, leave }: FinderProps) {
                 index === current && "bg-active ring-2 ring-ring ring-inset"
               )}
             >
-              <File aria-hidden className="size-4 shrink-0 text-faint" />
+              <PageIcon className="text-faint" />
               <div className="min-w-0 flex-1">
                 <span className="block truncate">{page.name}</span>{" "}
                 <span className="block truncate text-xs text-faint">

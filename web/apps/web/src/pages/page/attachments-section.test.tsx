@@ -54,6 +54,15 @@ test("a page's attachments are listed by name, each opening as it is served, wit
   ]).toEqual([`/api/v0/assets/${archive.id}/content?sig=1&download=1`, null, "data.zip"]);
   expect(section.textContent).toContain("1 KiB");
   expect(server.sent).toContain(`GET assets Guide`);
+  // Each kind its own icon, none a page's (M13 closeout, decision 969): a picture's, a PDF's FileType (not FileText, a
+  // source page's), another file's a paperclip (not File, a page's).
+  const iconOf = (name: string) =>
+    /\blucide-[\w-]+/.exec(
+      within(section).getByRole("link", { name }).closest("li")?.querySelector("svg")?.getAttribute("class") ?? ""
+    )?.[0];
+  expect(
+    ["data.zip", "manual.pdf (opens in a new tab)", "photo.png (opens in a new tab)", "README"].map(iconOf)
+  ).toEqual(["lucide-paperclip", "lucide-file-type", "lucide-file-image", "lucide-paperclip"]);
 });
 
 test("the notebook's home lists the attachments at its root", async () => {

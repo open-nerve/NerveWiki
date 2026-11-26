@@ -8,7 +8,8 @@ export const phoneWidth = 375;
  * forgot to set it, and fails, P5S1A-N4), that page scrolls not sideways, and that each of boxes keeps to the screen
  * and, one not inline (a paragraph, a heading, a dialog, a filter's wrapper), holds its content: a long name widens
  * one of them first. A dialog is fixed: what it lets out does not widen the page, so it is checked as a box
- * (M12/P2/S3).
+ * (M12/P2/S3); one popping in is measured as it is once in (animationsEnded), not scaled down on its way (M13
+ * closeout, review C's P5S3C-F1-N3).
  */
 export async function expectFits(page: Page, ...boxes: Locator[]): Promise<void> {
   const screen = page.viewportSize()?.width ?? phoneWidth;
@@ -20,6 +21,8 @@ export async function expectFits(page: Page, ...boxes: Locator[]): Promise<void>
   expect(width, "the page's width").toEqual({ viewport: screen, content: screen });
   for (const box of boxes) {
     // oxlint-disable-next-line no-await-in-loop -- a box at a time, named in what fails
+    await animationsEnded(box);
+    // oxlint-disable-next-line no-await-in-loop -- a box at a time, named in what fails
     const placed = await box.evaluate((element) => {
       const rect = element.getBoundingClientRect();
       const inline = getComputedStyle(element).display === "inline";
@@ -30,6 +33,23 @@ export async function expectFits(page: Page, ...boxes: Locator[]): Promise<void>
     expect(placed.right, `${String(box)}'s right`).toBeLessThanOrEqual(screen);
     expect(placed.overflow, `what overflows ${String(box)}`).toBeLessThanOrEqual(0);
   }
+}
+
+/**
+ * animationsEnded settles once what runs on box or above it, and ends, has ended: a dialog pops in scaled (styles.css's
+ * pop-in, 0.97 to 1 in 150 ms), its box and its buttons' read scaled down meanwhile, as openDrawer lets its drawer
+ * come in first (review C's P5S3C-F1-I1). With nothing running it waits for nothing; what runs for ever (a spinner) is
+ * not waited for. expectFits and expectButtonsInside both measure after it (M13 closeout, review C's P5S3C-F1-N3).
+ */
+async function animationsEnded(box: Locator): Promise<void> {
+  await box.evaluate((element) => {
+    const running: Animation[] = [];
+    for (let at: Element | null = element; at !== null; at = at.parentElement) {
+      running.push(...at.getAnimations().filter((animation) => animation.effect?.getTiming().iterations !== Infinity));
+    }
+    // A dialog closed meanwhile cancels its animation: finished then rejects, and there is nothing to wait for.
+    return Promise.all(running.map((animation) => animation.finished.catch(() => undefined)));
+  });
 }
 
 /**
@@ -45,18 +65,11 @@ const floatNoise = 0.01;
  * its border and padding: a row of them to the right that cannot wrap sticks out of its left at a narrow width
  * (M13/P5/S3, decision 958; review B's P5S3B-I1). A dialog pops in scaled (styles.css's pop-in, 0.97 to 1 in 150 ms)
  * while its border and padding read unscaled, which put a button up to 0.75 px past the padding: what runs on box or
- * above it, and ends, is let end first (as openDrawer does), then the edges are compared as they are (review C's
+ * above it, and ends, is let end first (animationsEnded), then the edges are compared as they are (review C's
  * P5S3C-F1-I1; not an engine's rounding, as said before), within floatNoise.
  */
 export async function expectButtonsInside(box: Locator): Promise<void> {
-  await box.evaluate((element) => {
-    const running: Animation[] = [];
-    for (let at: Element | null = element; at !== null; at = at.parentElement) {
-      running.push(...at.getAnimations().filter((animation) => animation.effect?.getTiming().iterations !== Infinity));
-    }
-    // A dialog closed meanwhile cancels its animation: finished then rejects, and there is nothing to wait for.
-    return Promise.all(running.map((animation) => animation.finished.catch(() => undefined)));
-  });
+  await animationsEnded(box);
   const placed = await box.evaluate((element) => {
     const style = getComputedStyle(element);
     const rect = element.getBoundingClientRect();
