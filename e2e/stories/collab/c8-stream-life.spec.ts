@@ -168,9 +168,20 @@ test("C8 (page): B, reading a page of Eng, is removed from it: the page is not f
   const eng = await createNotebook(api, a, workspace.slug, "Eng");
   const membership = await addedNotebookMember(api, a, eng.id, await accountIdOf(db, bEmail), "reader");
   const notes = await createPage(api, a, eng.id, "Notes");
+  const letStreamIn = await holdStream(page);
+  const reads = [
+    ...["view", "edit-lock", "backlinks", "properties", "versions"].map((what) => `/api/v0/pages/${notes.id}/${what}`),
+    ...["nodes", "assets"].map((what) => `/api/v0/notebooks/${eng.id}/${what}`),
+  ].map((path) => countAnswers(page, "GET", path));
   await goto(page, wikiPagePath(workspace.slug, eng.id, notes.id));
   await expect(pageHeading(page, "Notes")).toBeVisible();
   expect(Object.values(await notebookGroups(page, "Acme")).flat()).toContain("Eng");
+  // B's stream connects once the page shows, and its refresh reads Eng's tree and the page again, its view, lock,
+  // backlinks, properties, versions and Eng's attachments: once they have answered, B's tab reads nothing until an
+  // event comes. Removed sooner, B had a read of them still to come, which the removal answered not found and the
+  // browser logged (M13 closeout, 5 times in 100), as the next cell has it.
+  letStreamIn();
+  await expect.poll(() => Math.min(...reads.map((answers) => answers()))).toBeGreaterThanOrEqual(2);
 
   expect((await removeNotebookMember(api, a, membership.id)).response.status).toBe(204);
 
