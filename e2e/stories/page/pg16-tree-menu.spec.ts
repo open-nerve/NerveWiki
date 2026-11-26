@@ -9,7 +9,14 @@ import { createNotebook } from "../../fixtures/notebooks";
 import { createPage } from "../../fixtures/pages";
 import { openDrawer } from "../../fixtures/shell-pages";
 import { expect, test } from "../../fixtures/test";
-import { pageHeading, pageTree, quickSwitchFor, renameDialog, wikiPagePath } from "../../fixtures/wiki-pages";
+import {
+  pageHeading,
+  pageTree,
+  quickSwitchFor,
+  renameDialog,
+  treeTitles,
+  wikiPagePath,
+} from "../../fixtures/wiki-pages";
 import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 
 // PG16, the page tree in the three browsers (M13/P2/S2; M12-polish item 14): a row's menu, by the pointer and by the
@@ -50,10 +57,29 @@ test("PG16 (page): a row's menu in the tree opens at its button, by the pointer 
   const title = dialog.getByLabel("Title", { exact: true });
   await expect(title).toBeFocused();
   await expect(title).toHaveValue("Notes");
-  // The dialog's cancel: it has Save alone.
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
   await expect(button).toBeFocused();
+
+  // Enter held on a dialog's Cancel closes it; its repeats fall on the row's button the focus goes back to, and press
+  // nothing there: they opened its menu, then made a page by its first item (M13 closeout, review B's M13CB-M1,
+  // decision 967). The key's first press, then its repeats once the focus is back, then let go.
+  await button.press("Enter");
+  await menu.getByRole("menuitem", { name: "Move to…", exact: true }).click();
+  const move = page.getByRole("dialog", { name: "Move Notes", exact: true });
+  await move.getByRole("button", { name: "Cancel", exact: true }).focus();
+  await page.keyboard.down("Enter");
+  await expect(move).toBeHidden();
+  await expect(button).toBeFocused();
+  for (let repeat = 0; repeat < 3; repeat += 1) {
+    // oxlint-disable-next-line no-await-in-loop -- a key's repeats, one after the other
+    await page.keyboard.down("Enter");
+  }
+  await page.keyboard.up("Enter");
+  await expect(button).toBeFocused();
+  await expect(menu).toBeHidden();
+  await expect(pageHeading(page, "Roadmap")).toBeVisible();
+  expect(await treeTitles(page, "Plans")).toEqual(["Roadmap", "Notes"]);
 });
 
 /** Creates the pages titled titles in the notebook notebookId, one after the other, each last at its root. */

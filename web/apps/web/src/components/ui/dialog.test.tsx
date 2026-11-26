@@ -1,8 +1,16 @@
 import { render, screen } from "@testing-library/react";
-import { expect, test } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { expect, test, vi } from "vitest";
 
-import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogTitle } from "./alert-dialog";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./dialog";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "./alert-dialog";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from "./dialog";
 
 // The dialogs' entrance (M13/P1 design 4.2.7, 4.2.9). jsdom runs no animation: the classes say what a browser would.
 
@@ -75,4 +83,83 @@ test.each([
 ] as const)("the %s's one column is no wider than it", (role, dialog) => {
   render(dialog());
   expect(screen.getByRole(role).classList.contains("grid-cols-[minmax(0,1fr)]")).toBe(true);
+});
+
+// M13 closeout (decision 967; review B's M13CB-M1): Enter held on a dialog's Cancel closes it, and its repeats fall on
+// the button the focus goes back to, which opened it: it opened again, and a tree's menu, its first item focused,
+// made a page. Until a key is let go, a repeat of Enter or Space does nothing, whichever dialog closed; a press after
+// one closed by the pointer, held, repeats as it would.
+test.each([
+  [
+    "dialog",
+    (closed: () => void) => (
+      <Dialog>
+        <DialogTrigger>Open</DialogTrigger>
+        <DialogContent onCloseAutoFocus={closed}>
+          <DialogTitle>Rename</DialogTitle>
+          <DialogDescription>A new name.</DialogDescription>
+          <DialogClose>Cancel</DialogClose>
+        </DialogContent>
+      </Dialog>
+    ),
+  ],
+  [
+    "alertdialog",
+    (closed: () => void) => (
+      <AlertDialog>
+        <AlertDialogTrigger>Open</AlertDialogTrigger>
+        <AlertDialogContent onCloseAutoFocus={closed}>
+          <AlertDialogTitle>Delete</AlertDialogTitle>
+          <AlertDialogDescription>It cannot be undone.</AlertDialogDescription>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+        </AlertDialogContent>
+      </AlertDialog>
+    ),
+  ],
+] as const)(
+  "Enter held on the %s's Cancel closes it, its repeats pressing nothing on the button the focus goes back to; let go, Enter opens it again",
+  async (role, dialog) => {
+    const user = userEvent.setup();
+    const closed = vi.fn();
+    render(dialog(closed));
+    const trigger = screen.getByRole("button", { name: "Open" });
+    await user.click(trigger);
+    screen.getByRole("button", { name: "Cancel" }).focus();
+
+    await user.keyboard("{Enter>4}");
+    expect(screen.queryByRole(role)).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+    // The dialog's own onCloseAutoFocus is called still.
+    expect(closed).toHaveBeenCalledTimes(1);
+
+    await user.keyboard("{/Enter}{Enter}");
+    expect(screen.getByRole(role)).toBeTruthy();
+  }
+);
+
+test("a dialog closed by the pointer leaves the keys be: Enter pressed next and held repeats as it would", async () => {
+  const user = userEvent.setup();
+  const pressed = vi.fn();
+  render(
+    <>
+      <button type="button" onClick={pressed}>
+        Count
+      </button>
+      <Dialog>
+        <DialogTrigger>Open</DialogTrigger>
+        <DialogContent>
+          <DialogTitle>Rename</DialogTitle>
+          <DialogDescription>A new name.</DialogDescription>
+          <DialogClose>Cancel</DialogClose>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+  await user.click(screen.getByRole("button", { name: "Open" }));
+  await user.click(screen.getByRole("button", { name: "Cancel" }));
+  expect(screen.queryByRole("dialog")).toBeNull();
+
+  screen.getByRole("button", { name: "Count" }).focus();
+  await user.keyboard("{Enter>3/}");
+  expect(pressed).toHaveBeenCalledTimes(3);
 });

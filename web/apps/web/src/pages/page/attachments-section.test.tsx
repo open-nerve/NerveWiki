@@ -394,6 +394,30 @@ test("Rename renames the stem: the extension shows after the field and stays", a
   expect(document.activeElement).toBe(within(section).getByRole("button", { name: "Actions for cover.png" }));
 });
 
+// The attachment's rename has the page's form: Cancel, then Save, to the right (M13 closeout, review B's M13CB-N1).
+test("the attachment's rename has Cancel, then Save; Cancel closes it, nothing sent, the focus back on the row's actions", async () => {
+  const user = userEvent.setup();
+  const server = pageServer({ nodes });
+  renderApp(pagePath(guide.id), server.app);
+  const section = await attachments();
+
+  await user.click(await actionsOf(section, "photo.png"));
+  await user.click(screen.getByRole("menuitem", { name: "Rename" }));
+  const dialog = await screen.findByRole("dialog", { name: "Rename photo.png" });
+  expect(
+    within(dialog)
+      .getAllByRole("button")
+      .map((button) => button.textContent)
+  ).toEqual(["Cancel", "Save"]);
+
+  await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(server.sent.some((line) => line.startsWith("PATCH"))).toBe(false);
+  await waitFor(() =>
+    expect(document.activeElement).toBe(within(section).getByRole("button", { name: "Actions for photo.png" }))
+  );
+});
+
 test("a rename refused stays in the dialog: an empty stem unsent, its extension said still; a name taken; pages being edited", async () => {
   const user = userEvent.setup();
   let refusal = problem(409, "page.title_taken");
