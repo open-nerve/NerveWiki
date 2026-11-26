@@ -4,7 +4,7 @@
 |---|---|
 | 里程碑 | M13 界面焕新（`M13-ui-refresh`） |
 | 日期 | 2026-11-22（初稿；同日照三份设计审查修订、照修订核对第 1 轮再修订、第 2 轮之后补上最后的 Nit，[审查记录](reviews/M13-design-review.md)） |
-| 状态 | 设计定稿，负责人 2026-11-22 批准；P1 完成于 `4c3f10b9`，P2 于 `ba66557c`，P3 于 `072dcec2`，P4 于 `f62d0390`，P5 于 `eb48f4a1`；收尾的审查与修复完成（[收尾记录](reviews/M13-closeout-review.md)），`m13-closeout` 合并回 `m13-ui-refresh` 于 `3431787e`；下一步 `m13-ui-refresh` 合并进 `main`（`<待填>`），`main` 上的完整门禁与 CI 绿之后改为"实现完成，待人工验收"（第 3 节第 7 条，第 7 节"收尾"第 4 项；同总体设计 12.6） |
+| 状态 | 设计定稿，负责人 2026-11-22 批准；P1 完成于 `4c3f10b9`，P2 于 `ba66557c`，P3 于 `072dcec2`，P4 于 `f62d0390`，P5 于 `eb48f4a1`；收尾的审查与修复完成（[收尾记录](reviews/M13-closeout-review.md)），`m13-closeout` 合并回 `m13-ui-refresh` 于 `3431787e`；`m13-ui-refresh` 合并进 `main` 于 `5d7aa8dc`，`main` 上的完整门禁（三个发布脚本的测试照负责人 2026-11-27 的决定靠 CI，第 11 节）与 CI 绿；实现完成，待人工验收（第 3 节第 7 条；同总体设计 12.6），人工验收在 v0.1.0 发布之后（[v0.1.1 的移交](../../v0.1.1/handoffs/M12-after-release.md)） |
 | 依赖 | M0–M12 全部（改的是它们的网页）；M12 的发布等 M13 收尾之后再做（负责人 2026-11-22 第 5 问，第 11 节） |
 | 上级文档 | [v0.1 总体设计](../v0.1-design.md) 第 9、10、12、13.2、13.4 节；[M12 总设计](../M12-release/00-M12-design.md) 第 7 节"提交说明"、第 12 节"收尾与发布"一行；移交 [v0.2/handoffs/M12-polish.md](../../v0.2/handoffs/M12-polish.md)、[v0.1.1/handoffs/M12-after-release.md](../../v0.1.1/handoffs/M12-after-release.md) |
 | 视觉参照 | 负责人认可的三份样稿：[mockups/palette.html](mockups/palette.html)（外框与配色，选"琥珀"）、[mockups/settings.html](mockups/settings.html)（设置，选 A）、[mockups/reading.html](mockups/reading.html)（阅读与编辑）。浏览器直接打开，自带切换。样稿是外观的依据，不是代码：间距、色值、字号照它；结构、行为与可访问性照本文与 13.2；本文与样稿不同之处（例如属性条、焦点圈、编辑时的"保存"）在正文写明并以本文为准；阅读视图的色值以 reading.html 为准 |
@@ -556,6 +556,10 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
 - **970 设置的行里，下拉在 `md` 以下与输入框一样占满一行**（`max-md:w-full`；审查 A 的 N2）：笔记本常规页的开放程度、成员页与邀请的角色。
 - **971 工作区切换的菜单宽跟着名字走、有上限**（审查 A 的 M1；修复核对第 1 轮的 F1-N1、第 2 轮的 F2-N2，都是审查 A 的）：菜单至少同按钮宽，至多 20rem 与可用宽度里小的那个（`min-w-(--radix-dropdown-menu-trigger-width)`、`max-w-[min(20rem,var(--radix-dropdown-menu-content-available-width))]`），离窗口两边各留 8 px（`collisionPadding={8}`）；菜单里的名字最多折两行（`line-clamp-2`），按钮上的名字照旧一行截短。理由：只在末尾不同的长名字，菜单里多露出一截才分得出，手机上没有悬停、看不到 `title`。截短的名字带全名的 `title` 是同一条发现，照审查 A 的建议做，不是这条决定。
 
+### 合并进 `main` 时的一问（负责人 2026-11-27）
+
+- **本机的 bash 3.2 下发布脚本的三个测试失败：靠 CI**（[收尾记录](reviews/M13-closeout-review.md)"全量门禁"）：`main` 合并之后的完整门禁里，`server/internal/platform/buildinfo` 的 `TestTheReleaseScripts`、`TestTheReleaseGate`、`TestTheReleaseNotes` 失败。`deploy/` 的脚本里变量后面紧跟全角标点（如 `$have，`），这台机器只有 macOS 的 `/bin/bash` 3.2，它把那几个字节读进变量名（`unbound variable`），换 `en_US.UTF-8` 照样。M13 之前的 `main`（`3c315037`）同样失败；M13 没有改 `deploy/` 与 `server/`；同一棵树在 CI（Linux 的 bash 5）的 server (short) 上绿。主持者问装 Homebrew 的 bash 还是靠 CI，负责人答"接受，靠 CI"。脚本或 README 的改法进 [v0.2 的移交](../../v0.2/handoffs/M12-release.md)第 12 项。
+
 ### 需要负责人确认
 
 （无）
@@ -569,7 +573,7 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
 | P3 设置界面（S1、S2） | [03-P3](03-P3-settings.md) | 完成 | [设计审查](reviews/P3-design-review.md)；[S1](reviews/P3-S1-settings-mode-review.md)；[S2](reviews/P3-S2-workspace-notebook-settings-review.md) | S1 `f32b0762`；S2 `12b0b734` |
 | P4 阅读与编辑（S1–S3） | [04-P4](04-P4-reading.md) | 完成 | [设计审查](reviews/P4-design-review.md)；[S1](reviews/P4-S1-head-strip-panel-review.md)；[S2](reviews/P4-S2-body-code-diagrams-review.md)；[S3](reviews/P4-S3-editor-outline-save-review.md) | S1 `715923dd`；S2 `cea66d69`；S3 `4f2fde3b`；CI 的两处 `9871c7d4` |
 | P5 其余页面（S1–S3） | [05-P5](05-P5-pages.md) | 完成 | [设计审查](reviews/P5-design-review.md)；[S1](reviews/P5-S1-homes-entry-review.md)；[S2](reviews/P5-S2-lists-review.md)；[S3](reviews/P5-S3-versions-review.md) | S1 `326034d3`；S2 `d2c1c8ee`；S3 `75f020a4` |
-| 收尾 | — | 收尾已合并回 `m13-ui-refresh`；合并进 `main` 之后跑完整的门禁（第 7 节"收尾"第 4 项） | [收尾](reviews/M13-closeout-review.md) | 收尾 `3431787e`；进 `main` `<待填>` |
+| 收尾 | — | 已合并进 `main`；完整门禁与 `main` 的 CI 绿；实现完成，待人工验收 | [收尾](reviews/M13-closeout-review.md) | 收尾 `3431787e`；进 `main` `5d7aa8dc` |
 
 ## 13. 变更记录
 
@@ -603,3 +607,4 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
 - 2026-11-26：P5/S3 实施与审查完成（[审查记录](reviews/P5-S3-versions-review.md)；主持者的决定 955–960：升级的检查与报告里"都没问题"的摘要同健康页，升级页两节的正文是 `text-sm`，版本页早退的那一格按谁写这本笔记本定，对话框里靠右的一行按钮放不下时各占一行，右栏版本行的时间与种类各在一行里，导入的"Stop the upload"不理连点、表单的按钮不理按住的键）；4.8 的 hi2 另在 320 宽核对版本页的标题一行、"还原"在标题之上与它那一格之内，hi1、hi2 读右栏版本行的"当前"接在作者之后，as1 核对附件的"操作"在菜单开着时显着，UP1 另核对版本页读到之前与之后横幅在同一处，lw3、tr2、up3、hi5 在 320 宽核对对话框里的按钮都在框内，tr2 另核对双击"Import"的第二下落在"Stop the upload"上、上传不停；全部 e2e 在 S3 合并之前的门禁里完整跑过，记了时间（第 9 节）；`NotebookLayout` 的回退删了，横幅总在每个笔记本页每一支的列里；合并 `75f020a4`。
 - 2026-11-26：P5 完成（S1 `326034d3`、S2 `d2c1c8ee`、S3 `75f020a4`；主持者的决定 912–960；本机门禁替代分支 CI，负责人推送之后 CI 在最后一个头上补跑，决定 746、944：推送过的最后一个头是 P5/S1 合并之后的 `af33b81e`（run 45631867718 全绿，E2E 一步 8 分 5 秒），S2、S3 还没在 CI 上跑过，只靠 CI 的步骤见 [05-P5](05-P5-pages.md) 7.3：S2 的 TB1 的名字与 UP1 的面包屑在 Linux 的字体下、hi3 静止的一步，S3 的 hi2 在 320 宽按位置量的三句、UP1 (page) 的版本页一步、tr2 的点击记录、lw3、up3、hi5 的 `expectButtonsInside`；全部 e2e 在 S3 合并之前的门禁里完整跑过、记了时间（第 9 节）；P5 没有新的人工核对，P4 的那一项照旧欠着（04-P4 第 9 节"负责人"一条）；收尾待开（第 7 节）。
 - 2026-11-26：M13 收尾（[收尾记录](reviews/M13-closeout-review.md)；主持者的决定 961–971，第 11 节）。三份收尾审查对 `eb48f4a1` 各审一份：A 外框与设置 0I 3M 3N 2Q，B 阅读、编辑与其余页面 1I 3M 2N，C 完成标准、文档与移交 1I 6M 10N 2Q；全部接受。修复在 `m13-closeout`，十五个提交，只改 `web/`、`e2e/` 与 `tools/e2e-projects/check.mjs`：修复 `f181683f`、`8f8e6145`、`8ff51ade`、`7cacd2a2`、`f5d84965`；修复核对第 1 轮之后 `e1b24d5e`、`0d6b2b04`、`e404d0d7`，AS6 的偶发 `aad1ab44`；第 2 轮之后 `91a62e60`、`41fbce8f`、`f2130709`，C8 的偶发 `4470c25a`；第 3 轮之后 `524734f1`（只改测试）、`d734488f`。文档：读屏清单加 H 一节（二十二项）、输入法清单与 MCP 客户端清单、人工入口的第 15 项；README 与 `CHANGELOG.md` 0.1.0（"对比度让位于外观"，决定 963）；新建 [v0.2 的移交](../../v0.2/handoffs/M13-ui-refresh.md)（十一项，决定 962），M12-polish 与 M12-after-release 的处理进展；总体设计的头、9.2、13.2、13.4 与第 15 节；本文 4.7 的比值，第 7 节"收尾"第 1、4 项与"写给后面的 M"，第 9 节写上 `eb48f4a1` 的 CI（run 45773568132 十九项全绿，E2E 一步 12 分 1 秒，"646 passed (11.7m)"；release 的演练 run 45773568094 绿；审查 C 的 M6）；05-P5 的 7.3、7.5 与第 9 节，02-P2、03-P3、04-P4 第 9 节，01-P1 与 P1 两份记录的合并号。`m13-closeout` 合并回 `m13-ui-refresh` 是 `3431787e`；之后合并进 `main`，`main` 上的完整门禁（`make e2e` 照决定 961）、`main` 的 CI、12.6 与 00-M12 第 12 节在记录合并的提交里（第 7 节"收尾"第 4 项）。
+- 2026-11-27：合并进 `main`（`5d7aa8dc`；负责人"Merge and push"）。`main` 上的完整门禁（干净的分离 worktree 经 `heavy.sh`）：lint、gen-check、knip、build 过；`make test` 只败本机 bash 3.2 下的三个发布脚本测试（负责人：靠 CI，第 11 节）与 `TestRevertingAnImportBeingMerged` 在整套的负载下答 500（单独 5 次全过，CI 上绿；v0.2 的 M12-history 移交第 6 项）；`make e2e` 只败决定 961 的三格；`make image-smoke` 在新克隆里过（`modified=false`）。`main` 的 CI run 45868296366 十九项全绿，E2E 一步 9:49；收尾合并之后的 `m13-ui-refresh`（`3dcbf5cd`）的 run 45850702595 8:40，12:01 记作慢的 runner、结案。头的状态、第 12 节与总体设计 12.6 改为"实现完成，待人工验收"；00-M12 第 12 节那一行写上（[收尾记录](reviews/M13-closeout-review.md)"全量门禁""CI 的数"）。

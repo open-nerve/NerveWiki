@@ -20,7 +20,9 @@ M12 只做与安全相关的依赖更新、单实例的部署与 tag 触发的�
 9. **`close` 在 `run` 已经停过 lint 时不再等**（决定 694）：`run` 停服务时与 `close` 关闭之前各停一次 lint 的工作者，各至多 `database.commit_timeout` 加 5 秒；停机因此至多 52 秒（20 + 2 + 11 + 7 + 7 + 5），宽限 60 秒（`deploy/compose.yaml` 的 `stop_grace_period`）。让 `close` 在 `run` 已停过时不再等，就省下其中一个 7 秒；改了之后 deploy/README、`config.yaml` 与 `compose.yaml` 的数随之。
 10. **Release 页上的标题层级倒过来**（决定 706）：`CHANGELOG.md` 一节的 `###` 在前、`release-notes.sh` 接的 `## 镜像` 等在后，只是外观；要改得同时改 `release-notes.sh` 与 `release_test.go` 的期望。
 11. **以后要跨文档后退的 e2e 故事**（P1 第 9 节）：在帮手里加 `goBackAcross`（先 `settle`，再 `page.goBack()`，断言真的换了文档），照 A15 加一格对照，门禁照旧。
+12. **发布脚本的测试在 macOS 的 bash 3.2 下失败**（M13 收尾的全量门禁，负责人 2026-11-27 答"接受，靠 CI"）：`deploy/release-version-tag.sh`、`release-gate.sh`、`release-notes.sh` 里变量后面紧跟全角标点（如 `$have，`、`$sha，`、`$base，`），macOS 自带的 `/bin/bash` 3.2 把那几个字节读进变量名，`set -u` 下报 `unbound variable`，`LC_ALL=C.UTF-8` 与 `en_US.UTF-8` 都一样；`server/internal/platform/buildinfo` 的 `TestTheReleaseScripts`、`TestTheReleaseGate`、`TestTheReleaseNotes` 随之失败。CI 是 Linux 的 bash 5，不受影响；在 Mac 上跑 `make test` 或这几个脚本的人会碰到。候选的改法：变量写成 `${have}` 这样带花括号，或 README 的"需要安装"写 bash 4 以上、`needTools` 查版本。
 
 ## 处理进展
 
 - M12 收尾（2026-11-22）：建这一份，收 00-M12 4.13 的 `M12-release.md` 一行、P1、P5 第 9 节交来的、决定 694、696、706 与"需要负责人确认"第 6 项（负责人 2026-11-22 第 14 问；收尾记录 `docs/v0.1/M12-release/reviews/M12-closeout-review.md`）。v0.2 的总体设计开工时先处理它。
+- M13 收尾（2026-11-27）：加第 12 项（`main` 合并之后的全量门禁里看到的；收尾记录 `docs/v0.1/M13-ui-refresh/reviews/M13-closeout-review.md`"全量门禁"）。

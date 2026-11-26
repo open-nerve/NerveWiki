@@ -14,7 +14,9 @@ M8 的设计里明确不在 v0.1 做的几项，与 M12 改动历史时留下的
 3. **H3 会话里按时间分版本**（移交 M8-history 第 3 条）。
 4. **H4 永久删除**（移交 M8-history 第 4 条；决定 325）：回收站的一项、单个版本都不能立即永久删除，回收站也不能清空。v0.1 有界面上的一句（P2/S2，决定 391）与发布说明、deploy/README 第 8 节的变通；功能在 v0.2。
 5. **"同一形状在后台恢复、后台撤销里"仍没有造过**（[P3 设计](../../v0.1/M12-release/03-P3-server-correctness.md)第 9 节；[P3/S2 记录](../../v0.1/M12-release/reviews/P3-S2-nested-trash-roots-review.md)）：P3/S2 修好了第 302 条（被这个变更集删了、现在本身是回收站根的节点在撤销计划里是它自己的顶），任务自己的变更集分批删出的那一种嵌套回收站根没有造出来核对过。
+6. **`TestRevertingAnImportBeingMerged` 在本机整套的负载下答 500**（M13 收尾的全量门禁）：撤销一次正在合并的导入，撤销答 500 `internal_error`（`server/internal/bootstrap/interleavings_history_test.go:297`）。`make test` 里（竞态检测的九份同时跑）两次都红，单独 `-race -count=5` 全过，CI 上绿；服务端在 M13 没有改。原因没有查：先在那一刻服务端的日志里看是不是提交或锁的期限，再定是测试的时序还是撤销在这种交错下的真问题。
 
 ## 处理进展
 
 - M12 收尾（2026-11-22）：建这一份，收 00-M12 4.13 的 `M12-history.md` 一行与 P3 第 9 节的一项（收尾记录 `docs/v0.1/M12-release/reviews/M12-closeout-review.md`）。v0.2 的总体设计开工时先处理它。
+- M13 收尾（2026-11-27）：加第 6 项（`main` 合并之后的全量门禁里看到的；收尾记录 `docs/v0.1/M13-ui-refresh/reviews/M13-closeout-review.md`"全量门禁"）。

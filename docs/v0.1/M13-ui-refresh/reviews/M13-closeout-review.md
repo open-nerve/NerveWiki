@@ -5,7 +5,7 @@
 | 审查对象 | `m13-ui-refresh` 的 `eb48f4a1`（`docs: M13/P5 done`）：五个 Phase 全部合并之后，P1 完成于 `4c3f10b9`，P2 于 `ba66557c`，P3 于 `072dcec2`，P4 于 `f62d0390`（CI 跑出的两处 `9871c7d4`、`3e288acb`），P5 于 `eb48f4a1`；`git diff main...m13-ui-refresh`（合并基 `3c315037`）349 个文件 |
 | 方式 | 三位独立审查者并行（[00 号文档](../00-M13-design.md)第 7 节"收尾"）。A 外框与设置：设计基础、新外框与设置模式（P1–P3），以及后面的 Phase 怎样落在它们上面；分离的 worktree 里构建，探针经 `heavy.sh` 在三种引擎 × 1440、1024、768、375、320 × 亮暗 × 中英里普查 23 种页加登录、邀请与引导（2,000 余格），另做行为、长名字、强制色与 Firefox 的 Tab 次序几组。B 阅读、编辑与其余页面（P4、P5）：分离的 worktree 里构建，探针 r1–r10 经 `heavy.sh`，18 种页 × 浅深 × 五种宽度 × 中英、三种引擎，两处修法在工作树里试过再退回。C 完成标准、文档与移交：只读（`git`、`gh` 只读、`check_links.py`、两个 `check.mjs`），一位只读的帮手核对 M12-polish 的"处理进展"。heavy 锁由 A、B 轮流占着，C 没有跑重的东西。修复核对里三位各在自己的分离工作树里经 `heavy.sh` 跑：A、B 重跑自己的探针、相关的故事与 vitest；C 跑合并之前的整条命令、重放实施者的变异并另加，定文档脚本的文字。审查与核对用的工作树都已删；主检出与仓库没有改动、没有提交 |
 | 日期 | 2026-11-26 |
-| 结论 | A：0 Important、3 Minor、3 Nit、2 Q；普查的 2,000 余格没有一格横向溢出，没有一个元素逃出视口。B：1 Important（编辑时大纲的第一次跳转把标题停在视口之上）、3 Minor、2 Nit；18 种页 × 各条件不横滚，强制色下 70 个可聚焦项都有环。C：1 Important（`main` 上本机的 `make e2e` 不会是 rc 0）、6 Minor、10 Nit、2 Q；第 3 节七条、修订 1–9、移交、五份 Phase 文档第 9 节全表。同一件的：A-N3 = B-M2 = P5S3B-N3（Firefox 面包屑里单独一行的"/"）；A-N1 = B 第 9 节第 4 项 = 05-P5 第 9 节的齿轮；B-M1 = 05-P5 第 9 节的"按住的键"；B 第 9 节第 7 项 = P5S3C-F1-N3（`expectFits` 在弹入中量）；A-Q2 与 C 的未核实一条（"工作区设置"）。全部接受；主持者的决定 961–971（00 号文档第 11 节"M13 收尾的决定"）。修复在分支 `m13-closeout`，十五个提交，只改 `web/`、`e2e/` 与 `tools/e2e-projects/check.mjs`：五个提交到 `f5d84965`（`f181683f`、`8f8e6145`、`8ff51ade`、`7cacd2a2`、`f5d84965`）。修复核对第 1 轮 A 2 Nit，B 1 Minor、2 Nit，C 2 Minor、5 Nit、1 Q，全部接受，修复轮 2 是 `e1b24d5e`、`0d6b2b04`、`e404d0d7`，另有 AS6 的偶发 `aad1ab44`。第 2 轮 A 2 Nit，B 1 Nit，C 2 Minor、2 Nit；C-F2-M2 不改，其余接受，修复轮 3 是 `91a62e60`、`41fbce8f`、`f2130709`，另有 C8 的偶发 `4470c25a`。第 3 轮 A 没有新的，B 1 Nit、1 Q：F3-N1 接受，只改测试，修复轮 4 是 `524734f1`；F3-Q1 不改。C 的第 3 轮 1 Nit：F3-N1 接受，修复轮 5 是 `d734488f`，B 核（第 4 轮）。合并回 `m13-ui-refresh` 是 `3431787e`；`m13-ui-refresh` 合并进 `main` 是 `<待填>` |
+| 结论 | A：0 Important、3 Minor、3 Nit、2 Q；普查的 2,000 余格没有一格横向溢出，没有一个元素逃出视口。B：1 Important（编辑时大纲的第一次跳转把标题停在视口之上）、3 Minor、2 Nit；18 种页 × 各条件不横滚，强制色下 70 个可聚焦项都有环。C：1 Important（`main` 上本机的 `make e2e` 不会是 rc 0）、6 Minor、10 Nit、2 Q；第 3 节七条、修订 1–9、移交、五份 Phase 文档第 9 节全表。同一件的：A-N3 = B-M2 = P5S3B-N3（Firefox 面包屑里单独一行的"/"）；A-N1 = B 第 9 节第 4 项 = 05-P5 第 9 节的齿轮；B-M1 = 05-P5 第 9 节的"按住的键"；B 第 9 节第 7 项 = P5S3C-F1-N3（`expectFits` 在弹入中量）；A-Q2 与 C 的未核实一条（"工作区设置"）。全部接受；主持者的决定 961–971（00 号文档第 11 节"M13 收尾的决定"）。修复在分支 `m13-closeout`，十五个提交，只改 `web/`、`e2e/` 与 `tools/e2e-projects/check.mjs`：五个提交到 `f5d84965`（`f181683f`、`8f8e6145`、`8ff51ade`、`7cacd2a2`、`f5d84965`）。修复核对第 1 轮 A 2 Nit，B 1 Minor、2 Nit，C 2 Minor、5 Nit、1 Q，全部接受，修复轮 2 是 `e1b24d5e`、`0d6b2b04`、`e404d0d7`，另有 AS6 的偶发 `aad1ab44`。第 2 轮 A 2 Nit，B 1 Nit，C 2 Minor、2 Nit；C-F2-M2 不改，其余接受，修复轮 3 是 `91a62e60`、`41fbce8f`、`f2130709`，另有 C8 的偶发 `4470c25a`。第 3 轮 A 没有新的，B 1 Nit、1 Q：F3-N1 接受，只改测试，修复轮 4 是 `524734f1`；F3-Q1 不改。C 的第 3 轮 1 Nit：F3-N1 接受，修复轮 5 是 `d734488f`，B 核（第 4 轮）。合并回 `m13-ui-refresh` 是 `3431787e`；`m13-ui-refresh` 合并进 `main` 是 `5d7aa8dc` |
 
 ## 完成标准核对
 
@@ -19,7 +19,7 @@
 | 4 | 13.2 第 31 条与对比度三个故事 | 13.2 第 31 条的对比度与焦点照 4.7 改写（P1/S1）；`bdi`、`min-w-0`、`contain-paint`、375 px 几句在；pg4、se1、l5 的守卫在；13.4 第 3 条"正文的字至少 7:1，其余按实量的值减 0.1" | 成立 |
 | 5 | 没有服务端与契约的改动 | `git diff --stat main...m13-ui-refresh -- server api` 为空；改动只在 `web/apps`（271）、`e2e`（42）、`docs`（35）、`tools/e2e-projects/check.mjs`（1） | 成立。收尾的修复同样：`eb48f4a1..d734488f` 的 68 个文件是 `web/` 60、`e2e/` 7、`tools/e2e-projects/check.mjs` 1；上面那条 `git diff --quiet` 实施者在 `f5d84965`、`e404d0d7`、`f2130709` 上、C 在 `f5d84965`、`aad1ab44` 上都以 0 退出，`eb48f4a1..d734488f` 上也是 0 |
 | 6 | 本 M 没有 `open` 的移交；M13 认领、做掉的进"处理进展" | `docs/v0.1/M13-ui-refresh/handoffs/` 只有 `.gitkeep`；M12-polish 的处理进展有 P1/S2、P2/S2、P2/S3、P3/S2、P4/S1–S3、P5/S1–S3 十行，对着代码都成立 | 成立；C-M1、M2、M5 由收尾补（见"移交"） |
-| 7 | 收尾之后合并进 `main`、完整门禁、`main` 的 CI 绿、"实现完成，待人工验收" | 合并进 `main` 之后写：合并 `<待填>`、"全量门禁"一节与 `main` 的 CI | 本机的 `make e2e` 照决定 961；合并进 `main` 之后写 |
+| 7 | 收尾之后合并进 `main`、完整门禁、`main` 的 CI 绿、"实现完成，待人工验收" | 合并 `5d7aa8dc`（负责人 2026-11-27"Merge and push"）；"全量门禁"一节：本机的 `make e2e` 照决定 961，三个发布脚本的测试照负责人 2026-11-27 的决定靠 CI；`main` 的 CI run 45868296366 十九项全绿；00 号文档的头、第 12 节与 12.6 改为"实现完成，待人工验收" | 成立 |
 
 ## 发现与处置
 
@@ -156,7 +156,7 @@
 - **新建** [v0.2/handoffs/M13-ui-refresh.md](../../../v0.2/handoffs/M13-ui-refresh.md)（`status: open`、`from: M13`、`to: v0.2`、`created: 2026-11-26`；决定 962）：十一项，搜索摘要的 Markdown（00-M13 第 2 节，决定 721）、像素级回归（决定 725）、骨架（决定 914）、l5 的底（决定 891）、mermaid 的主题与作者的浅色图（决定 871，P4/S2）、代码块的头与页内查找、焦点（决定 869、905）、锚点的首次焦点与"编辑于现在"（决定 900，P4/S1）、编辑器的远跳与 Firefox 的警告（P4/S3；另写 375 宽往上跳也报，对准的 4 次与 1 秒、结束对准的几种先后只由推理守着、真的拖滚动条与页内查找没有核对）、决定 958 的七行（C-N5）、可能用手指点的设备（决定 953、966）、Linux X11 下成对的按键重复（修复核对第 1 轮，A 的未核实）。05-P5 第 9 节收尾的另四件（齿轮、"/"、按住的键、`expectFits`）收尾修了，不在里面。"Chromium 强制色下齿轮聚焦时笔记本那一行的框不画"不在里面：A 核过，是 Chromium 的元素截图不带这一圈，整页截图带（修复核对第 2 轮，C-F2-M2 不改）。
 - **[M12-polish.md](../../../v0.2/handoffs/M12-polish.md)**（仍 `open`）：条目里 M13 做掉的逐项注明，第 1 项重数（C-M5）；P2/S3 一行的 `aria-keyshortcuts`（C-N6）、第 9 项的位置（C-N9）；"处理进展"加"M13 收尾"一行，指到新的一份。
 - **[M12-after-release.md](../../../v0.1.1/handoffs/M12-after-release.md)**（仍 `open`，to v0.1.1）：第 1 项"读屏清单 A–H""十五项"（C-M3）；"处理进展"加"M13 收尾"一行。
-- **总体设计 12.6 的 M13 与 00-M12 第 12 节"收尾与发布"一行**，都在 `main` 上记录合并的提交里（C-F1-M2，00 号文档第 7 节"收尾"）：12.6 改为"实现完成，待人工验收"，第 15 节那一行随之写上；00-M12 第 12 节那一行改成"收尾已合并；M13 收尾已合并（`<待填>`），发布未开始（推 tag 之前问负责人）"。00-M12 的头与第 13 节不改：M13 设计定稿时也只改了第 12 节那一行（`56caf0d7`）。
+- **总体设计 12.6 的 M13 与 00-M12 第 12 节"收尾与发布"一行**，都在 `main` 上记录合并的提交里（C-F1-M2，00 号文档第 7 节"收尾"）：12.6 改为"实现完成，待人工验收"，第 15 节那一行随之写上；00-M12 第 12 节那一行改成"收尾已合并；M13 收尾已合并进 `main`（`5d7aa8dc`），发布未开始（……推 tag 之前问负责人）"；00 号文档的头、第 11 节"合并进 `main` 时的一问"、第 12 节与第 13 节同在这个提交里。00-M12 的头与第 13 节不改：M13 设计定稿时也只改了第 12 节那一行（`56caf0d7`）。
 - 收尾之后 v0.1 里 `open` 的移交只剩 `M4-pages/handoffs/M0-P1-editor.md` 与 `M9-mcp/handoffs/M0-P1-mcp-sessions.md`，它们等发布之后的清单；M13 自己的 `handoffs/` 是空的。
 
 ## 人工清单
@@ -178,7 +178,7 @@
 
 ## CI 的数
 
-E2E 一步的趋势：M12 收尾 6:21 → `f62d0390` 8:22 → `e8809170` 8:05 → `af33b81e` 8:05 → `eb48f4a1` 12:01（时限 18 分钟，00-M12 第 3 节第 11 条）。
+E2E 一步的趋势：M12 收尾 6:21 → `f62d0390` 8:22 → `e8809170` 8:05 → `af33b81e` 8:05 → `eb48f4a1` 12:01 → `3dcbf5cd` 8:40 → `main` 的 `5d7aa8dc` 9:49（时限 18 分钟，00-M12 第 3 节第 11 条）。
 
 | 头 | 运行 | 结果 | E2E 一步 |
 |---|---|---|---|
@@ -186,12 +186,12 @@ E2E 一步的趋势：M12 收尾 6:21 → `f62d0390` 8:22 → `e8809170` 8:05 �
 | `e8809170`（P5 的设计，CI 的两处修好之后） | 45579305353；release 45579305372 | 全绿 | 8:05 |
 | `af33b81e`（P5/S1 合并之后） | 45631867718；release 45631867695 | 全绿；646 格，"645 passed (7.9m)"、1 跳 | 8:05 |
 | `eb48f4a1`（P5 完成） | 45773568132；release 45773568094（amd64 1:50、arm64 1:45） | 十九项全绿（web 5:04，e2e 作业 13:19，image 1:31）；647 格，"646 passed (11.7m)"、1 跳 | 12:01 |
-| 收尾合并之后的 `m13-ui-refresh`（`3431787e`） | 合并回 `m13-ui-refresh` 之后写 | | |
-| 合并进 `main` 之后第一次 `main`（`<待填>`） | 合并进 `main` 之后写 | | |
+| 收尾合并之后的 `m13-ui-refresh`（`3431787e`；推送的头是记录合并的 `3dcbf5cd`） | 45850702595；release 45850702635 | 十九项全绿（web 5:01，e2e 作业 9:51，image 1:28）；656 格，"655 passed (8.5m)"、1 跳，没有重试；us-east-1 | 8:40 |
+| 合并进 `main` 之后第一次 `main`（`5d7aa8dc`） | 45868296366；release 45868296620 | 十九项全绿（web 5:04，server (short) 3:13，e2e 作业 10:56，image 1:21）；656 格，"655 passed (9.6m)"、1 跳，没有重试；eastus2 | 9:49 |
 
 - `eb48f4a1` 比 `af33b81e` 只多一格：各故事的用时合计多约 433 test-seconds，S2、S3 加的几步约八十秒，其余落在 S2、S3 没碰的故事上（lw8、lw4、a15、l6、pg17、lw6、lw13 各慢 20–100%），三种引擎都慢（各引擎的 test-minutes：Chromium 8.3 → 11.6、WebKit 3.6 → 5.2、Firefox 2.8 → 5.1）；本机同期一直 2.7–2.9 min。推断是那一次的 runner 慢，没有核实（不是同一台机器，不能复跑同一个头）。
 - S2、S3 只靠 CI 的几步（TB1、UP1 的变更集与版本页两步、hi3 静止的一步、hi2 320 宽的三句、tr2:290 的点击记录、lw3/up3/hi5 的 `expectButtonsInside`）在 run 45773568132 上第一次跑，都过了。
-- 看法（C-M6）：收尾合并之后的 `m13-ui-refresh` 与合并进 `main` 之后第一次 `main` 的 E2E 一步都回到 8–9 分钟，就记作一次慢的 runner、结案；两次都在 11 分钟以上，推 tag 之前先查（作业日志开头的 `Cloud:`、`Region:` 与各引擎的分钟，06-environment 第 4 节）。`m13-closeout` 自己不推送，所以第一次是收尾合并之后的 `m13-ui-refresh`。收尾多了 9 格（647 → 656）；本机合并之前的整条命令里 Playwright 计 2.8–3.1 分钟。两次的数与结论：合并进 `main` 之后写。
+- 看法（C-M6）：收尾合并之后的 `m13-ui-refresh` 与合并进 `main` 之后第一次 `main` 的 E2E 一步都回到 8–9 分钟，就记作一次慢的 runner、结案；两次都在 11 分钟以上，推 tag 之前先查（作业日志开头的 `Cloud:`、`Region:` 与各引擎的分钟，06-environment 第 4 节）。`m13-closeout` 自己不推送，所以第一次是收尾合并之后的 `m13-ui-refresh`。收尾多了 9 格（647 → 656）；本机合并之前的整条命令里 Playwright 计 2.8–3.1 分钟。两次的数与结论：8:40 与 9:49，都在 11 分钟以下，12:01 没有再出现；两次在不同的区域（us-east-1、eastus2）。记作 `eb48f4a1` 那一次的 runner 慢，结案。
 
 ## 核实修复
 
@@ -269,19 +269,24 @@ E2E 一步的趋势：M12 收尾 6:21 → `f62d0390` 8:22 → `e8809170` 8:05 �
 
 ## 全量门禁
 
-合并进 `main` 之后写。`main` 上合并之后的头（`<待填>`），干净的分离 worktree 经 `heavy.sh` 一次持锁：
+负责人 2026-11-27 答"Merge and push"（完整门禁过了就推送 `main`）。主持者在 `main` 合并之后的头 `5d7aa8dc` 上，用干净的分离 worktree 经 `heavy.sh` 一次持锁（01:09–01:24）：
 
 | 项 | 用时 | 结果 |
 |---|---|---|
-| `pnpm install --frozen-lockfile` | | |
-| `make lint`（含两个 `check.mjs`；M13 里第一次跑 `lint-go`，`make tools` 要下载 golangci-lint） | | |
-| `make gen-check` | | |
-| `make knip` | | |
-| `make build` | | |
-| `make test` | | |
-| `make test-go-short` | | |
-| `make e2e` | | 照决定 961：只败 SE2 [chromium] `se2:231`（`toHaveValue`）、LW8 [webkit] `lw8:836`（`toBeFocused`），PG15 [webkit] `pg15:113`（deep equality）时红时过，同行同消息；多出来的红先看服务端的日志，停顿的单独重跑、照实写；rc 照实写 |
-| `make image-smoke`（另一次持锁，在合并之后的头上另 `git clone` 的普通克隆里） | | （`modified=false`） |
+| `pnpm install --frozen-lockfile` | 2 秒 | rc 0 |
+| `make lint`（含 `check.mjs`；`lint-go` 在 M13 里第一次跑） | 90 秒 | rc 0 |
+| `make gen-check` | 23 秒 | rc 0 |
+| `make knip` | 3 秒 | rc 0 |
+| `make build` | 4 秒 | rc 0 |
+| `make test` | 500 秒 | rc 2：`buildinfo` 包的 `TestTheReleaseScripts`、`TestTheReleaseGate`、`TestTheReleaseNotes` 失败（本机 bash 3.2，见下）；组合根的 `TestRevertingAnImportBeingMerged` 答 500（见下）；make 停在半途，补全见下 |
+| `make test-go-short` | 61 秒 | rc 2：只有上面三个发布脚本的测试 |
+| `make e2e` | 186 秒 | rc 2：656 格，652 过、3 败、1 跳（3.1m）；败的是决定 961 的三格，SE2 [chromium] `se2:231`（`toHaveValue`）、PG15 [webkit] `pg15:113`（deep equality）、LW8 [webkit] `lw8:836`（`toBeFocused`），同行同消息 |
+| `make image-smoke`（另一次持锁，`5d7aa8dc` 的新克隆里） | 899 秒（含等锁） | rc 0：`nervewiki:0.1.0-dev` 通过（版本 `0.1.0-dev`，提交 `5d7aa8dc7137…`，`modified=false`） |
+
+`make test` 停在半途，主持者另跑两次补全：`make -k test`（660 秒，01:27–01:38）里网页 234 个文件 5,623 格全过，Go 的各包只有同样的三个发布脚本测试与又一次 `TestRevertingAnImportBeingMerged`（组合根第 4 份）；之后 `test-go-costs`、`test-go-costs-lint`、`test-go-guards` 依次跑（3,055 秒，01:38–02:29），rc 0。
+
+- **三个发布脚本的测试**：`deploy/release-version-tag.sh`、`release-gate.sh`、`release-notes.sh` 里变量后面紧跟全角标点（`$have，`、`$sha，`、`$base，`），这台机器只有 macOS 的 `/bin/bash` 3.2（Homebrew 没有装 bash），它把那几个字节读进变量名，`set -u` 下报 `unbound variable`；测试给脚本的 `LC_ALL=C.UTF-8`，换 `en_US.UTF-8` 照样。M13 之前的 `main`（`3c315037`）上同样失败；M13 没有改 `deploy/` 与 `server/`。M12 收尾的全量门禁（2026-11-22）在这台机器上过了，推断那时装着新的 bash，没有核实。同一棵树在 CI 上（Linux 的 bash 5）server (short) 绿。主持者问装 Homebrew 的 bash 再跑还是靠 CI，负责人 2026-11-27 答"接受，靠 CI"（00 号文档第 11 节"合并进 `main` 时的一问"）；改法进 v0.2 的移交 [M12-release.md](../../../v0.2/handoffs/M12-release.md) 第 12 项。
+- **`TestRevertingAnImportBeingMerged`**：撤销一次正在合并的导入，撤销答 500 `internal_error`（`server/internal/bootstrap/interleavings_history_test.go:297`）。整套的负载下（竞态检测的九份同时跑）两次都红，单独以 `-race -count=5` 跑 5 次全过；CI 的 bootstrap-4 在 `3dcbf5cd` 与 `5d7aa8dc` 上都绿。服务端与 `main` 的 `3c315037` 相同，推断是负载下的时序，不是 M13 带来的；服务端答 500 的原因没有查。进 v0.2 的移交 [M12-history.md](../../../v0.2/handoffs/M12-history.md) 第 6 项。
 
 ## 门禁与分支 CI
 
@@ -319,7 +324,7 @@ E2E 一步的趋势：M12 收尾 6:21 → `f62d0390` 8:22 → `e8809170` 8:05 �
 | `d734488f` | 主持者 | rc 2，270 秒（干净的分离 worktree，先 `pnpm install --frozen-lockfile`）；vitest 234 / 5623；E2E 656 格，652 / 3 / 1，3.0m，只败 961 的三格（SE2 `se2:231` `toHaveValue`、PG15 `pg15:113` deep equality、LW8 `lw8:836` `toBeFocused`，同行同消息）；`check.mjs` 437/108/108/3；受保护的路径 rc 0；`git diff --check` 没有输出；68 个文件，+1765 / −136 |
 
   `f2130709` 之后的三个提交：`4470c25a`、`524734f1` 只改测试，`d734488f` 改一行代码、加一步测试，各自跑了上表的门禁；`524734f1`、`d734488f` 的 E2E 是整套的 656 格。C 的第 3 轮在 `524734f1` 上跑了整条命令，见上表；合并之前在最后的头 `d734488f` 上由主持者再跑一次，见上表末行。
-- **分支 CI**：`m13-closeout` 自己不推送。收尾合并回 `m13-ui-refresh`（`3431787e`）之后的 CI：合并回 `m13-ui-refresh` 之后写。合并进 `main` 之后第一次 `main` 的 CI：合并进 `main` 之后写。
+- **分支 CI**：`m13-closeout` 自己不推送。收尾合并回 `m13-ui-refresh`（`3431787e`）之后，负责人 2026-11-27 推送记录合并的 `3dcbf5cd`：run 45850702595 十九项全绿，release 45850702635 绿。合并进 `main` 之后第一次 `main`（`5d7aa8dc`，负责人 2026-11-27 推送）：run 45868296366 十九项全绿，release 45868296620 绿。数见"CI 的数"。
 
 ## 没能验证的风险
 
@@ -333,7 +338,9 @@ E2E 一步的趋势：M12 收尾 6:21 → `f62d0390` 8:22 → `e8809170` 8:05 �
 - **外观的判断只靠截图**（决定 725）；Windows 的高对比度只在 Chromium 与 Firefox 的模拟里看过，Chromium 的模拟不认暗色，暗色只在 Firefox 看了（A）。
 - **可能用手指点的设备**（决定 953、966）：CDP 模拟不了只有 `any-pointer` 是 coarse 的设备，进 v0.2 的移交第 10 项；`hover: none` 那一支 A 在触屏上下文里核到了。
 - **真的读屏**：A、B 都只核了代码与可访问树，H 一节的各项没有在读屏里听过；VoiceOver 会不会把链接里子元素的 `title` 当作提示读出来，没有核实（A）。
-- **E2E 一步的 12:01 是 runner 慢**：推断，等"CI 的数"里的两次运行。
+- **E2E 一步的 12:01 是 runner 慢**：推断；之后两次 8:40、9:49，结案（"CI 的数"）。
+- **发布脚本在 macOS 的 bash 3.2 下**：本机三个测试失败，只有 CI 的 bash 5 证明它们（"全量门禁"，负责人 2026-11-27 的决定）；在 Mac 上跑脚本或 `make test` 的人会碰到（v0.2 的移交 M12-release 第 12 项）。
+- **`TestRevertingAnImportBeingMerged` 在负载下答 500**：原因没有查（v0.2 的移交 M12-history 第 6 项）。
 
 ## 列给负责人的
 
@@ -341,9 +348,9 @@ E2E 一步的趋势：M12 收尾 6:21 → `f62d0390` 8:22 → `e8809170` 8:05 �
 
 | # | 哪件 | 现在怎样 | 出处 |
 |---|---|---|---|
-| 1 | 推送收尾合并之后的 `m13-ui-refresh` 与合并进 `main` 之后的 `main` | 主持者没有推送的凭据时，本机的门禁替代分支 CI，负责人推送之后 CI 在头上补跑；两次的 CI 写进"CI 的数" | 决定 746、761 |
+| 1 | 推送收尾合并之后的 `m13-ui-refresh` 与合并进 `main` 之后的 `main` | 负责人 2026-11-27 推送了两次（"Push it"、"Merge and push"），两次的 CI 都绿 | "门禁与分支 CI" |
 | 2 | 推 `v0.1.0-rc.1` 与 `v0.1.0` 两个 tag（M12 的发布） | 没问；M13 合并进 `main`、`main` 的 CI 绿之后照 00-M12 第 7 节问；[M12 收尾记录](../../M12-release/reviews/M12-closeout-review.md)"列给负责人的"那张表照旧 | 负责人 2026-11-22 第 5 问；00-M12 4.11 第 2 步 |
-| 3 | CI 的 E2E 一步 12:01 | 推断是 runner 慢；两次都回到 8–9 分钟就结案，都在 11 分钟以上推 tag 之前先查 | C-M6；"CI 的数" |
+| 3 | CI 的 E2E 一步 12:01 | 之后两次 8:40、9:49，记作慢的 runner、结案 | C-M6；"CI 的数" |
 | 4 | 本机的 `make e2e` 只允许三格失败 | `main` 上的完整门禁照此；绿的证据是合并之后 `main` 的 CI | 决定 961、764、795(a) |
 | 5 | 视觉优先的取舍 | 说明与占位的字、焦点圈、删除类的红字的对比度低于 WCAG 的门槛（浅色对白 3.07、3.10、4.38）；`CHANGELOG.md` 0.1.0 的已知限制写了 | 负责人 2026-11-22 第 1 问；决定 716、736、963；00 号文档 4.7 |
 | 6 | 亮色琥珀比样稿深一档（`#c2871f`，样稿 `#c58a22`） | Chromium 的 `accent-color` 不到 3:1 时给复选框画深色的勾，与样稿相反；色相看不出差别 | 决定 766（P1/S2） |
@@ -359,6 +366,8 @@ E2E 一步的趋势：M12 收尾 6:21 → `f62d0390` 8:22 → `e8809170` 8:05 �
 | 16 | 对话框里放不下的按钮各占一行，没改的七行 | 今天在 320 宽中英都放得下，照旧；v0.2 的移交第 9 项 | 决定 958；C-N5 |
 | 17 | 还欠的人工验收 | 读屏清单（A–H）、输入法清单（23 步，第 21 步带 (d)）、MCP 客户端清单（A–K）与"其余各项"十五项，都在 v0.1.0 发布之后，入口 [manual/README.md](../../M12-release/manual/README.md) | [v0.1.1 的移交](../../../v0.1.1/handoffs/M12-after-release.md) |
 | 18 | Safari 里编辑时显着的"保存" | 进"其余各项"第 15 项 | 04-P4 第 9 节"负责人"；C-M3 |
+| 19 | 本机的 bash 3.2 下三个发布脚本的测试失败 | 负责人 2026-11-27 答"接受，靠 CI"；同一棵树在 CI 上绿；改法在 v0.2 的移交 M12-release 第 12 项 | "全量门禁"；00 号文档第 11 节 |
+| 20 | `TestRevertingAnImportBeingMerged` 在本机整套的负载下两次答 500 | 单独 5 次全过，CI 上绿，服务端在 M13 没有改；原因没有查，v0.2 的移交 M12-history 第 6 项 | "全量门禁" |
 
 ## 秘密
 
