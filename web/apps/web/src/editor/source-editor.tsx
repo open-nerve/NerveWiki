@@ -88,6 +88,12 @@ const readerActs = ["wheel", "pointerdown", "touchstart", "keydown"] as const;
 /** How far below the window's top a jump's line is at its place (decision 876's 16px, whatever a font makes of it). */
 const placedWithin = 48;
 
+/** windowAtFoot is whether the window is scrolled as far down as it goes, where a jump scrolls it (jumpTo). */
+function windowAtFoot(): boolean {
+  const root = document.scrollingElement ?? document.documentElement;
+  return root.scrollTop + root.clientHeight >= root.scrollHeight - 1;
+}
+
 /**
  * A jump's line kept at the window's top (EditorHost.reveal): where, in which content, how many more times; whether
  * it has been at its place yet, and where in the window the editor last left it (its top), as the scrolls it sees
@@ -256,8 +262,11 @@ class EditorHost {
   /**
    * scrolled ends a jump's realigning as a scroll that is not the editor's moved its line, once the line has been at
    * its place (reveal). It is the editor's own scroll observer, which it calls before it measures what a scroll shows,
-   * and realigns: for a scroll's event, and for what it sees come into view, which in Firefox comes first. The line
-   * where the editor's last update left it, or at its place, the scroll is the editor's.
+   * and realigns: for a scroll's event, and for what it sees come into view, which in Firefox comes first. The scroll is
+   * the editor's, and the line at its place, where the line is in [0, 48] below the window's top, where the editor's
+   * last update left it (its own scroll landed), or with the window at its foot, which the line of a section near the
+   * page's end cannot go above: that line never reached the window's top, and a script's scroll after its jump was
+   * pulled back in the three engines (fix check 2, review B's M13CB-F2-N1, review C's M13CC-F2-N1).
    */
   private scrolled(): void {
     const aligned = this.aligned;
@@ -269,9 +278,10 @@ class EditorHost {
       return;
     }
     const top = this.topOf(aligned.at);
-    if (top >= 0 && top <= placedWithin) {
+    const landed = aligned.top !== undefined && Math.abs(top - aligned.top) <= 1;
+    if ((top >= 0 && top <= placedWithin) || landed || windowAtFoot()) {
       aligned.placed = true;
-    } else if (aligned.placed && (aligned.top === undefined || Math.abs(top - aligned.top) > 1)) {
+    } else if (aligned.placed) {
       aligned.end();
       return;
     }

@@ -592,12 +592,70 @@ const prose = Array.from({ length: 40 }, (_, at) => {
   return `## Section ${n}\n\n${en}\n\n${(at + 1) % 3 === 0 ? `${zh}\n\n` : ""}- an item ${n}\n- another item, longer, ${"word ".repeat(30)}\n`;
 }).join("\n");
 
+/**
+ * scrollAfterJump scrolls the window by `by` once the outline's jump has put the line whose text is text at its place,
+ * in [0, 48] below the window's top or, a line the window cannot bring so far up, the window at its foot; six frames on,
+ * as review B's probe scrolled 100ms after the jump. Then it reads the window a frame at a time for 1.2s, past the
+ * realigning's second.
+ */
+function scrollAfterJump(
+  page: Page,
+  text: string,
+  by: number
+): Promise<{ placed: number; went: number; seen: number[] }> {
+  return page.evaluate(
+    async ([wanted, distance]) => {
+      // oxlint-disable-next-line unicorn/consistent-function-scoping -- serialized into the page: it stays in the body
+      const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+      const placed = () => {
+        const line = [...document.querySelectorAll(".cm-content .cm-line")].find((each) => each.textContent === wanted);
+        const lineTop = line?.getBoundingClientRect().top ?? Number.NaN;
+        const root = document.documentElement;
+        const foot = window.scrollY + window.innerHeight >= root.scrollHeight - 1;
+        return (lineTop >= 0 && lineTop <= 48) || (foot && lineTop >= 0 && lineTop < window.innerHeight);
+      };
+      for (let at = 0; at < 300 && !placed(); at += 1) {
+        // oxlint-disable-next-line no-await-in-loop -- a frame at a time
+        await frame();
+      }
+      for (let at = 0; at < 6; at += 1) {
+        // oxlint-disable-next-line no-await-in-loop -- a frame at a time
+        await frame();
+      }
+      const where = { placed: window.scrollY, went: Number.NaN, seen: [] as number[] };
+      window.scrollBy(0, distance);
+      where.went = window.scrollY;
+      const start = performance.now();
+      while (performance.now() - start < 1200) {
+        // oxlint-disable-next-line no-await-in-loop -- a frame at a time
+        await frame();
+        where.seen.push(window.scrollY);
+      }
+      return where;
+    },
+    [text, by] as const
+  );
+}
+
+/**
+ * expectStayed expects the window to have stayed where a scroll of `by` took it, each frame within half the scroll of
+ * it, not back at the jump's line: the editor's own measuring of the lines the scroll shows moves the window by less,
+ * as it keeps them where they are on the screen (166px, scrolled up to lines it had estimated).
+ */
+function expectStayed({ went, seen }: { went: number; seen: number[] }, by: number): void {
+  expect(
+    seen.filter((y) => Math.abs(y - went) > Math.abs(by) / 2),
+    `the window from ${String(went)}`
+  ).toEqual([]);
+}
+
 // The outline's jump puts its line back at the window's top for a second, as the lines it passed are measured
 // (M13CB-I1). A scroll of the window meanwhile that came with no wheel, press, touch or key, a script's here, as the
 // browser's find or a screen reader's come, ended nothing: Firefox brought the window back to the line from it, the
 // lines it showed measured (M13 closeout fix check 1, review B's M13CB-F1-N1). Once the line has been at its place, a
-// scroll that is not the editor's ends the realigning, and the window stays where it went. The window is read a frame
-// at a time past the second.
+// scroll that is not the editor's ends the realigning, and the window stays where it went. The last section's line the
+// window cannot bring to its top: at the window's foot it is at its place, and a scroll up from there stays too; the
+// three engines brought the window back to the foot (fix check 2, review B's M13CB-F2-N1, review C's M13CC-F2-N1).
 test("PG17 (page): a scroll of the window after the outline's jump that is not the reader's wheel, press, touch or key stays where it went", async ({
   api,
   signedInPage,
@@ -608,48 +666,26 @@ test("PG17 (page): a scroll of the window after the outline's jump that is not t
   const page = await signedInPage(tokens);
   await page.setViewportSize({ width: 1440, height: 900 });
   const main = page.getByRole("main");
-  await goto(page, wikiPagePath(workspace.slug, notebook.id, doc.id));
-  await expect(pageHeading(page, "Prose")).toBeVisible();
-  await main.getByRole("button", { name: "Edit", exact: true }).click();
-  await page
-    .getByRole("complementary", { name: "About this page" })
-    .getByRole("navigation", { name: "Outline" })
-    .getByRole("button", { name: "Section 15", exact: true })
-    .click();
-  const { placed, went, seen } = await page.evaluate(async () => {
-    // oxlint-disable-next-line unicorn/consistent-function-scoping -- serialized into the page: it stays in the body
-    const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
-    // oxlint-disable-next-line unicorn/consistent-function-scoping -- serialized into the page: it stays in the body
-    const lineTop = () =>
-      [...document.querySelectorAll(".cm-content .cm-line")]
-        .find((line) => line.textContent === "## Section 15")
-        ?.getBoundingClientRect().top ?? Number.NaN;
-    // At its place, and six frames more, as the probe scrolled 100ms after the jump.
-    for (let at = 0; at < 300 && !(lineTop() >= 0 && lineTop() <= 48); at += 1) {
-      // oxlint-disable-next-line no-await-in-loop -- a frame at a time
-      await frame();
-    }
-    for (let at = 0; at < 6; at += 1) {
-      // oxlint-disable-next-line no-await-in-loop -- a frame at a time
-      await frame();
-    }
-    const where = { placed: window.scrollY, went: Number.NaN, seen: [] as number[] };
-    window.scrollBy(0, 500);
-    where.went = window.scrollY;
-    const start = performance.now();
-    while (performance.now() - start < 1200) {
-      // oxlint-disable-next-line no-await-in-loop -- a frame at a time
-      await frame();
-      where.seen.push(window.scrollY);
-    }
-    return where;
-  });
-  expect(went - placed, "the scroll").toBe(500);
-  // Not back near the line: what the editor's own measuring moves the window by is a few pixels.
-  expect(
-    seen.filter((y) => Math.abs(y - went) > 100),
-    `the window from ${String(went)}`
-  ).toEqual([]);
+  const jumpTo = async (heading: string) => {
+    await goto(page, wikiPagePath(workspace.slug, notebook.id, doc.id));
+    await expect(pageHeading(page, "Prose")).toBeVisible();
+    await main.getByRole("button", { name: "Edit", exact: true }).click();
+    await page
+      .getByRole("complementary", { name: "About this page" })
+      .getByRole("navigation", { name: "Outline" })
+      .getByRole("button", { name: heading, exact: true })
+      .click();
+  };
+
+  await jumpTo("Section 15");
+  const down = await scrollAfterJump(page, "## Section 15", 500);
+  expect(down.went - down.placed, "the scroll down").toBe(500);
+  expectStayed(down, 500);
+
+  await jumpTo("Section 40");
+  const up = await scrollAfterJump(page, "## Section 40", -1500);
+  expect(up.placed - up.went, "the scroll up").toBe(1500);
+  expectStayed(up, -1500);
 });
 
 /**
