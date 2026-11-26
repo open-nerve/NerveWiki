@@ -266,7 +266,10 @@ class EditorHost {
    * the editor's, and the line at its place, where the line is in [0, 48] below the window's top, where the editor's
    * last update left it (its own scroll landed), or with the window at its foot, which the line of a section near the
    * page's end cannot go above: that line never reached the window's top, and a script's scroll after its jump was
-   * pulled back in the three engines (fix check 2, review B's M13CB-F2-N1, review C's M13CC-F2-N1).
+   * pulled back in the three engines (fix check 2, review B's M13CB-F2-N1, review C's M13CC-F2-N1). At the foot only
+   * with the line in the window, where the editor's scroll to it leaves it: a scroll to the foot from a line higher up,
+   * as the browser's find's to a word at the page's end, was pulled back to the line (fix check 3, review C's
+   * M13CC-F3-N1).
    */
   private scrolled(): void {
     const aligned = this.aligned;
@@ -279,7 +282,7 @@ class EditorHost {
     }
     const top = this.topOf(aligned.at);
     const landed = aligned.top !== undefined && Math.abs(top - aligned.top) <= 1;
-    if ((top >= 0 && top <= placedWithin) || landed || windowAtFoot()) {
+    if ((top >= 0 && top <= placedWithin) || landed || (windowAtFoot() && top >= 0 && top < window.innerHeight)) {
       aligned.placed = true;
     } else if (aligned.placed) {
       aligned.end();

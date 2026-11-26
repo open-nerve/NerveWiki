@@ -595,14 +595,15 @@ const prose = Array.from({ length: 40 }, (_, at) => {
 /**
  * scrollAfterJump scrolls the window by `by` once the outline's jump has put the line whose text is text at its place,
  * in [0, 48] below the window's top or, a line the window cannot bring so far up, the window at its foot; six frames on,
- * as review B's probe scrolled 100ms after the jump. Then it reads the line's top on the screen a frame at a time for
- * 1.2s, past the realigning's second: NaN in a frame the editor has not drawn it in.
+ * as review B's probe scrolled 100ms after the jump. It notes whether the scroll left the window at its foot; then it
+ * reads the line's top on the screen a frame at a time for 1.2s, past the realigning's second: NaN in a frame the
+ * editor has not drawn it in.
  */
 function scrollAfterJump(
   page: Page,
   text: string,
   by: number
-): Promise<{ inPlace: boolean; placed: number; went: number; placedTop: number; tops: number[] }> {
+): Promise<{ inPlace: boolean; placed: number; went: number; atFoot: boolean; placedTop: number; tops: number[] }> {
   return page.evaluate(
     async ([wanted, distance]) => {
       // oxlint-disable-next-line unicorn/consistent-function-scoping -- serialized into the page: it stays in the body
@@ -611,11 +612,11 @@ function scrollAfterJump(
         [...document.querySelectorAll(".cm-content .cm-line")]
           .find((each) => each.textContent === wanted)
           ?.getBoundingClientRect().top ?? Number.NaN;
+      // oxlint-disable-next-line unicorn/consistent-function-scoping -- serialized into the page: it stays in the body
+      const foot = () => window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 1;
       const placed = () => {
         const lineAt = lineTop();
-        const root = document.documentElement;
-        const foot = window.scrollY + window.innerHeight >= root.scrollHeight - 1;
-        return (lineAt >= 0 && lineAt <= 48) || (foot && lineAt >= 0 && lineAt < window.innerHeight);
+        return (lineAt >= 0 && lineAt <= 48) || (foot() && lineAt >= 0 && lineAt < window.innerHeight);
       };
       for (let at = 0; at < 300 && !placed(); at += 1) {
         // oxlint-disable-next-line no-await-in-loop -- a frame at a time
@@ -630,10 +631,12 @@ function scrollAfterJump(
         placed: window.scrollY,
         placedTop: lineTop(),
         went: Number.NaN,
+        atFoot: false,
         tops: [] as number[],
       };
       window.scrollBy(0, distance);
       where.went = window.scrollY;
+      where.atFoot = foot();
       const start = performance.now();
       while (performance.now() - start < 1200) {
         // oxlint-disable-next-line no-await-in-loop -- a frame at a time
@@ -670,7 +673,10 @@ function expectStayed({ placedTop, tops }: { placedTop: number; tops: number[] }
 // window cannot bring to its top: at the window's foot it is at its place, and a scroll up from there stays too; the
 // three engines brought the window back to the foot (fix check 2, review B's M13CB-F2-N1, review C's M13CC-F2-N1). The
 // line's place on the screen tells it, not the window's: back at the foot is past where the jump left the window, the
-// page grown by the lines measured (fix check 3, review B's M13CB-F3-N1).
+// page grown by the lines measured (fix check 3, review B's M13CB-F3-N1). A scroll to the window's foot, as the
+// browser's find's to a word at the page's end, stays as well, the jump's line far above the window: the window at its
+// foot is the line's place only with the line in the window, as the editor's own scroll to the last section's leaves
+// it; the three engines brought the window back to Section 15 (fix check 3, review C's M13CC-F3-N1).
 test("PG17 (page): a scroll of the window after the outline's jump that is not the reader's wheel, press, touch or key stays where it went", async ({
   api,
   signedInPage,
@@ -697,6 +703,12 @@ test("PG17 (page): a scroll of the window after the outline's jump that is not t
   expect(down.inPlace, "the line at its place").toBe(true);
   expect(down.went - down.placed, "the scroll down").toBe(500);
   expectStayed(down, 500);
+
+  await jumpTo("Section 15");
+  const toFoot = await scrollAfterJump(page, "## Section 15", 100_000);
+  expect(toFoot.inPlace, "the line at its place").toBe(true);
+  expect(toFoot.atFoot, "the window at its foot").toBe(true);
+  expectStayed(toFoot, toFoot.went - toFoot.placed);
 
   await jumpTo("Section 40");
   const up = await scrollAfterJump(page, "## Section 40", -1500);
