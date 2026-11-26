@@ -132,14 +132,15 @@ function AddForm({ workspace, notebook, candidates }: SectionProps & { candidate
             </p>
           )}
         </div>
-        <div className="space-y-1.5">
+        {/* Below md the form's whole width, as the member's select is (M13 closeout, decision 970). */}
+        <div className="space-y-1.5 max-md:w-full">
           <Label htmlFor={roleId}>{t("notebookMembers.role")}</Label>
           <NativeSelect
             id={roleId}
             name="role"
             value={role}
             onChange={(event) => setRole(event.target.value as NotebookRole)}
-            className="block"
+            className="block max-md:w-full"
           >
             <NotebookRoleOptions />
           </NativeSelect>

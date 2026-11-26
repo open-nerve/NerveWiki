@@ -67,7 +67,7 @@ export const en = {
   "shell.backToWorkspace": "Back to the workspace",
   "shell.menu": "Navigation",
   "workspace.home": "Home",
-  "workspace.settings": "Settings",
+  "workspace.settings": "Workspace settings",
   "workspace.create": "Create workspace",
   "workspace.switch": "Switch workspace",
   "notebooks.mine": "My notebooks",

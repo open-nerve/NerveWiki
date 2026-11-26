@@ -54,6 +54,15 @@ test("a page's attachments are listed by name, each opening as it is served, wit
   ]).toEqual([`/api/v0/assets/${archive.id}/content?sig=1&download=1`, null, "data.zip"]);
   expect(section.textContent).toContain("1 KiB");
   expect(server.sent).toContain(`GET assets Guide`);
+  // Each kind its own icon, none a page's (M13 closeout, decision 969): a picture's, a PDF's FileType (not FileText, a
+  // source page's), another file's a paperclip (not File, a page's).
+  const iconOf = (name: string) =>
+    /\blucide-[\w-]+/.exec(
+      within(section).getByRole("link", { name }).closest("li")?.querySelector("svg")?.getAttribute("class") ?? ""
+    )?.[0];
+  expect(
+    ["data.zip", "manual.pdf (opens in a new tab)", "photo.png (opens in a new tab)", "README"].map(iconOf)
+  ).toEqual(["lucide-paperclip", "lucide-file-type", "lucide-file-image", "lucide-paperclip"]);
 });
 
 test("the notebook's home lists the attachments at its root", async () => {
@@ -392,6 +401,30 @@ test("Rename renames the stem: the extension shows after the field and stays", a
   expect(server.sent).toContain("PATCH photo.png to cover.png");
   await waitFor(() => expect(rows(section)).toContain("cover.png (opens in a new tab)"));
   expect(document.activeElement).toBe(within(section).getByRole("button", { name: "Actions for cover.png" }));
+});
+
+// The attachment's rename has the page's form: Cancel, then Save, to the right (M13 closeout, review B's M13CB-N1).
+test("the attachment's rename has Cancel, then Save; Cancel closes it, nothing sent, the focus back on the row's actions", async () => {
+  const user = userEvent.setup();
+  const server = pageServer({ nodes });
+  renderApp(pagePath(guide.id), server.app);
+  const section = await attachments();
+
+  await user.click(await actionsOf(section, "photo.png"));
+  await user.click(screen.getByRole("menuitem", { name: "Rename" }));
+  const dialog = await screen.findByRole("dialog", { name: "Rename photo.png" });
+  expect(
+    within(dialog)
+      .getAllByRole("button")
+      .map((button) => button.textContent)
+  ).toEqual(["Cancel", "Save"]);
+
+  await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(server.sent.some((line) => line.startsWith("PATCH"))).toBe(false);
+  await waitFor(() =>
+    expect(document.activeElement).toBe(within(section).getByRole("button", { name: "Actions for photo.png" }))
+  );
 });
 
 test("a rename refused stays in the dialog: an empty stem unsent, its extension said still; a name taken; pages being edited", async () => {

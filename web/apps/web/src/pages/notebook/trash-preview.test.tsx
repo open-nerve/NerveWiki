@@ -12,6 +12,7 @@ import type { NotebookRole } from "../../services/notebook.service";
 import { eventServer, withEvents } from "../../test/event-server";
 import { json, notebookJSON, problem, workspaceJSON, type Answer } from "../../test/fakes";
 import { assetNode, guide, install, linux, notes, pagePath, pageServer } from "../../test/page-server";
+import { readText } from "../../test/read-text";
 import { renderApp } from "../../test/render";
 import type { FakeTrashItem } from "../../test/trash-server";
 
@@ -62,7 +63,7 @@ test("a page's preview shows where it was and what the trash says of it, and its
   expect(
     within(crumbs)
       .getAllByRole("link")
-      .map((link) => [link.textContent, link.getAttribute("href")])
+      .map((link) => [readText(link), link.getAttribute("href")])
   ).toEqual([
     ["Plans", home],
     ["Trash", trashPath],

@@ -22,9 +22,10 @@ import { newOnboardedTeam } from "../../fixtures/workspaces";
 // names broken, the lock's holder's in its note, a version's author's in its line (review B's P4S1B-F1); a code block's
 // head, its language and Copy, a done task item and its blocks, a property's map's chip, a callout's title and its
 // blocks, a list item's (M13/P4/S2, decisions 869, 872, 890, 901–903; the fix checks); the edit's outline's items
-// (M13/P4/S3's review). The page's version only: the cells check the interface's behaviour, writing nothing but their
-// data and one write through the API (for the update in place), the API's and MCP's versions exempt (v0.1 design 13.4,
-// item 3).
+// (M13/P4/S3's review) and its first jump down a long page; the trail's separators each on the line of a name, the
+// right column no stop of Tab (M13 closeout). The page's version only: the cells check the interface's behaviour,
+// writing nothing but their data and one write through the API (for the update in place), the API's and MCP's versions
+// exempt (v0.1 design 13.4, item 3).
 
 /** A value of 97 characters without a break: the properties' strip breaks it in its chip (decision 864). */
 const long = "x".repeat(97);
@@ -159,6 +160,16 @@ test("PG17 (page): the page's head says who edited the page last, Edit kept wher
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
   expect(Math.abs((await box(column)).y), "the column's top at the page's end").toBeLessThanOrEqual(0.5);
   await page.evaluate(() => window.scrollTo(0, 0));
+
+  // The column scrolls itself, which has Firefox make it a stop of Tab after the page's last control: it is none, the
+  // next stop its first summary (M13 closeout, review A's M13CA-M3). Playwright's WebKit on macOS tabs to fields alone.
+  if (testInfo.project.name !== "webkit") {
+    expect(await column.evaluate((each) => each.scrollHeight > each.clientHeight), "the column scrolls").toBe(true);
+    await main.getByRole("button", { name: "Upload", exact: true }).focus();
+    await page.keyboard.press("Tab");
+    await expect(column.locator("summary").first()).toBeFocused();
+    await page.evaluate(() => window.scrollTo(0, 0));
+  }
 
   // A heading of the outline clicked: it shows 16px from the top, focused, its item the location.
   await item("Part 05").click();
@@ -419,6 +430,391 @@ test("PG17 (page): long names break, the lock's holder's in its note, a version'
   await fitsAt(path);
   // The version's page: the same note, and the version's author in the line under its title.
   await fitsAt(`${path}/versions/1`, main.getByRole("link", { name: unbroken("admin") }));
+});
+
+/**
+ * A long page's Markdown, as review B's probe had it (M13 closeout, M13CB-I1): frontmatter, a table, lists, tasks,
+ * callouts, code, diagrams, maths, then twelve parts. Its editor opened at the page's top has not drawn the lines from
+ * the tasks on: their heights are its estimates.
+ */
+const guide = [
+  "---",
+  "status: draft",
+  'owner: "[[Hub]]"',
+  "tags: [architecture, backend]",
+  "reviewers:",
+  "  - Ada",
+  "  - Bob",
+  "---",
+  "",
+  "Nerve Wiki is a **Go** program with *PostgreSQL* and a React page, with `inline code`, ==a highlight==, a link to [[Hub]], one to [[Missing page]] not written yet, an [outside link](https://example.com) and a #tagged word.",
+  "",
+  "## Modules",
+  "",
+  "| Module | Duty | Depends |",
+  "|---|---|---|",
+  "| `identity` | Accounts, sessions, tokens | — |",
+  "| `workspace` | Workspaces and members | identity |",
+  "| `page` | Pages, versions, the edit's lock | notebook |",
+  "",
+  "### Lists",
+  "",
+  "- one",
+  "- two",
+  "  - nested",
+  "  - nested again",
+  "- three",
+  "",
+  "1. first",
+  "2. second",
+  "3. third",
+  "",
+  "## Tasks",
+  "",
+  "- [x] Modules talk through ports only",
+  "  - a step under the done one",
+  "- [ ] A cache for the read path (v0.2)",
+  "- [x] A done item whose text is long enough to wrap onto a second line at a phone's width, and then some more",
+  "",
+  "## Callouts",
+  "",
+  "> [!note] A note",
+  "> The note's body, with a [[Hub]] link.",
+  "",
+  "> [!warning] Careful",
+  "> The warning's body.",
+  "",
+  "> [!tip]- Folded tip",
+  "> ## Hidden heading",
+  "> inside",
+  "",
+  "> A plain quote.",
+  "",
+  "## Code",
+  "",
+  "```go",
+  "func (s *Service) Create(ctx context.Context, in CreateInput) (Page, error) {",
+  "\tif err := in.Validate(); err != nil {",
+  "\t\treturn Page{}, err // fail fast",
+  "\t}",
+  "\treturn s.repo.Insert(ctx, in)",
+  "}",
+  "```",
+  "",
+  "```",
+  `a block with no language and a long line ${"0123456789".repeat(14)}`,
+  "```",
+  "",
+  "## Diagram",
+  "",
+  "```mermaid",
+  "flowchart LR",
+  "  A[Browser] --> B[HTTP] --> C[Use case] --> D[(PostgreSQL)]",
+  "```",
+  "",
+  "## Math",
+  "",
+  "$E = mc^2$ inline, and a block:",
+  "",
+  "$$",
+  "\\int_0^1 x^2 \\, dx = \\frac{1}{3}",
+  "$$",
+  "",
+  "---",
+  "",
+  ...Array.from({ length: 12 }, (_, at) => `## Part ${String(at + 1)}\n\n${"Filler text of a part. ".repeat(20)}\n`),
+].join("\n");
+
+/**
+ * settledTop is where the editor's line whose text is text settles in the window: read a frame at a time, the line
+ * found anew each time (CodeMirror draws its lines anew), until its top is the same five frames running. By its place,
+ * not by a time waited; NaN when the line is not drawn.
+ */
+function settledTop(page: Page, text: string): Promise<number> {
+  return page.evaluate(async (wanted) => {
+    let last = Number.NaN;
+    for (let frame = 0, same = 0; frame < 300 && same < 5; frame += 1) {
+      // oxlint-disable-next-line no-await-in-loop -- a frame at a time
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      const line = [...document.querySelectorAll(".cm-content .cm-line")].find((each) => each.textContent === wanted);
+      const at = line === undefined ? Number.NaN : line.getBoundingClientRect().top;
+      same = at === last ? same + 1 : 0;
+      last = at;
+    }
+    return last;
+  }, text);
+}
+
+// The edit's outline's first jump from the page's top, to a heading its editor has not drawn: the lines it passed
+// were CodeMirror's estimates, drawn and measured as it got there, which left the heading's line above the window,
+// the cursor on it unseen (M13 closeout, review B's M13CB-I1). The line settles at the window's top: 16px down
+// (decision 876), within [0, 48] whatever a font makes of it.
+test("PG17 (page): edited from the page's top, the outline's first jump to a heading not drawn yet leaves its line at the window's top", async ({
+  api,
+  signedInPage,
+}, testInfo) => {
+  const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
+  const doc = await createPage(api, pat, notebook.id, "Guide", null, guide);
+  const page = await signedInPage(tokens);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const main = page.getByRole("main");
+  const outline = page
+    .getByRole("complementary", { name: "About this page" })
+    .getByRole("navigation", { name: "Outline" });
+  const jumpTo = async (heading: string) => {
+    await goto(page, wikiPagePath(workspace.slug, notebook.id, doc.id));
+    await expect(pageHeading(page, "Guide")).toBeVisible();
+    await main.getByRole("button", { name: "Edit", exact: true }).click();
+    await outline.getByRole("button", { name: heading, exact: true }).click();
+    const settled = await settledTop(page, `## ${heading}`);
+    expect(settled, `where ## ${heading} settles`).toBeGreaterThanOrEqual(0);
+    expect(settled, `where ## ${heading} settles`).toBeLessThanOrEqual(48);
+    // Left by going to the page anew, not by Done: Done far down a long page makes Firefox warn of a scroll-linked
+    // positioning effect, with this jump or without it, as scrolling did before (M13/P4 design 9, for v0.2).
+  };
+  await jumpTo("Tasks");
+  await jumpTo("Callouts");
+});
+
+/**
+ * A long page of prose, as review B's probe had it (M13 closeout fix check 1, M13CB-F1-N1): forty sections, each a
+ * paragraph that wraps over several lines, a Chinese one every third, and a list. Its editor opened at the page's top
+ * has estimated the heights of the lines it has not drawn; drawn as a scroll shows them, they change.
+ */
+const prose = Array.from({ length: 40 }, (_, at) => {
+  const n = String(at + 1);
+  const en =
+    `A paragraph of section ${n} that runs long enough to wrap over several lines at any width, in a proportional face, with words of uneven lengths like interoperability, a, of, configuration and so on. `.repeat(
+      3
+    );
+  const zh = "这是一段用来让编辑器估计行高的中文段落，没有换行地一直写下去，行宽不同时折成的行数也不同。".repeat(4);
+  return `## Section ${n}\n\n${en}\n\n${(at + 1) % 3 === 0 ? `${zh}\n\n` : ""}- an item ${n}\n- another item, longer, ${"word ".repeat(30)}\n`;
+}).join("\n");
+
+/**
+ * scrollAfterJump scrolls the window by `by` once the outline's jump has put the line whose text is text at its place,
+ * in [0, 48] below the window's top or, a line the window cannot bring so far up, the window at its foot; six frames on,
+ * as review B's probe scrolled 100ms after the jump. It notes whether the scroll left the window at its foot; then it
+ * reads the line's top on the screen a frame at a time for 1.2s, past the realigning's second: NaN in a frame the
+ * editor has not drawn it in.
+ */
+function scrollAfterJump(
+  page: Page,
+  text: string,
+  by: number
+): Promise<{ inPlace: boolean; placed: number; went: number; atFoot: boolean; placedTop: number; tops: number[] }> {
+  return page.evaluate(
+    async ([wanted, distance]) => {
+      // oxlint-disable-next-line unicorn/consistent-function-scoping -- serialized into the page: it stays in the body
+      const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+      const lineTop = () =>
+        [...document.querySelectorAll(".cm-content .cm-line")]
+          .find((each) => each.textContent === wanted)
+          ?.getBoundingClientRect().top ?? Number.NaN;
+      // oxlint-disable-next-line unicorn/consistent-function-scoping -- serialized into the page: it stays in the body
+      const foot = () => window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 1;
+      const placed = () => {
+        const lineAt = lineTop();
+        return (lineAt >= 0 && lineAt <= 48) || (foot() && lineAt >= 0 && lineAt < window.innerHeight);
+      };
+      for (let at = 0; at < 300 && !placed(); at += 1) {
+        // oxlint-disable-next-line no-await-in-loop -- a frame at a time
+        await frame();
+      }
+      for (let at = 0; at < 6; at += 1) {
+        // oxlint-disable-next-line no-await-in-loop -- a frame at a time
+        await frame();
+      }
+      const where = {
+        inPlace: placed(),
+        placed: window.scrollY,
+        placedTop: lineTop(),
+        went: Number.NaN,
+        atFoot: false,
+        tops: [] as number[],
+      };
+      window.scrollBy(0, distance);
+      where.went = window.scrollY;
+      where.atFoot = foot();
+      const start = performance.now();
+      while (performance.now() - start < 1200) {
+        // oxlint-disable-next-line no-await-in-loop -- a frame at a time
+        await frame();
+        where.tops.push(lineTop());
+      }
+      return where;
+    },
+    [text, by] as const
+  );
+}
+
+/**
+ * expectStayed expects the jump's line to have stayed away from where the jump put it on the screen, each frame by more
+ * than a quarter of the scroll `by`, a frame it is not drawn in away too. A scroll leaves the line about the scroll's
+ * distance off, the editor's measuring of the lines the scroll shows keeping them where they are on the screen: in the
+ * three engines 500px for 500px down, 1886px for 1500px up in Prose and 1301px in Guide; the realigning brought it back
+ * to within 1px. Not the window's scrollY: the measuring changes the page's height, so the realigning brought the window
+ * back to the line 523px to 955px past where the jump had left it, and a scroll up of 600px in Guide that stayed came
+ * within 91px of it (fix check 3, review B's M13CB-F3-N1).
+ */
+function expectStayed({ placedTop, tops }: { placedTop: number; tops: number[] }, by: number): void {
+  expect(
+    tops.filter((lineAt) => Math.abs(lineAt - placedTop) <= Math.abs(by) / 4),
+    `the line's top from ${String(placedTop)}`
+  ).toEqual([]);
+}
+
+// The outline's jump puts its line back at the window's top for a second, as the lines it passed are measured
+// (M13CB-I1). A scroll of the window meanwhile that came with no wheel, press, touch or key, a script's here, as the
+// browser's find or a screen reader's come, ended nothing: Firefox brought the window back to the line from it, the
+// lines it showed measured (M13 closeout fix check 1, review B's M13CB-F1-N1). Once the line has been at its place, a
+// scroll that is not the editor's ends the realigning, and the window stays where it went. The last section's line the
+// window cannot bring to its top: at the window's foot it is at its place, and a scroll up from there stays too; the
+// three engines brought the window back to the foot (fix check 2, review B's M13CB-F2-N1, review C's M13CC-F2-N1). The
+// line's place on the screen tells it, not the window's: back at the foot is past where the jump left the window, the
+// page grown by the lines measured (fix check 3, review B's M13CB-F3-N1). A scroll to the window's foot, as the
+// browser's find's to a word at the page's end, stays as well, the jump's line far above the window: the window at its
+// foot is the line's place only with the line in the window, as the editor's own scroll to the last section's leaves
+// it; the three engines brought the window back to Section 15 (fix check 3, review C's M13CC-F3-N1).
+test("PG17 (page): a scroll of the window after the outline's jump that is not the reader's wheel, press, touch or key stays where it went", async ({
+  api,
+  signedInPage,
+}, testInfo) => {
+  const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
+  const doc = await createPage(api, pat, notebook.id, "Prose", null, prose);
+  const page = await signedInPage(tokens);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const main = page.getByRole("main");
+  const jumpTo = async (heading: string) => {
+    await goto(page, wikiPagePath(workspace.slug, notebook.id, doc.id));
+    await expect(pageHeading(page, "Prose")).toBeVisible();
+    await main.getByRole("button", { name: "Edit", exact: true }).click();
+    await page
+      .getByRole("complementary", { name: "About this page" })
+      .getByRole("navigation", { name: "Outline" })
+      .getByRole("button", { name: heading, exact: true })
+      .click();
+  };
+
+  await jumpTo("Section 15");
+  const down = await scrollAfterJump(page, "## Section 15", 500);
+  expect(down.inPlace, "the line at its place").toBe(true);
+  expect(down.went - down.placed, "the scroll down").toBe(500);
+  expectStayed(down, 500);
+
+  await jumpTo("Section 15");
+  const toFoot = await scrollAfterJump(page, "## Section 15", 100_000);
+  expect(toFoot.inPlace, "the line at its place").toBe(true);
+  expect(toFoot.atFoot, "the window at its foot").toBe(true);
+  expectStayed(toFoot, toFoot.went - toFoot.placed);
+
+  await jumpTo("Section 40");
+  const up = await scrollAfterJump(page, "## Section 40", -1500);
+  expect(up.inPlace, "the line at its place, the window at its foot").toBe(true);
+  expect(up.placed - up.went, "the scroll up").toBe(1500);
+  expectStayed(up, -1500);
+});
+
+/**
+ * separatorsApart lists the trail's separators that are not on the line of their step's name, by their boxes: a "/"
+ * against the name's character next to it in its item (M13 closeout, decision 968). Firefox broke the line after one
+ * that stood before its step, leaving it alone on a line (review B's M13CB-M2). With widths, the trail's list is made
+ * each of them wide in turn, a pixel apart, then given its own back: a name broken anywhere that fills its line to
+ * within a separator's width put the separator alone on the next line, in the three engines, at widths a font decides.
+ */
+function separatorsApart(page: Page, widths: readonly number[] = []): Promise<string[]> {
+  return page
+    .getByRole("main")
+    .getByRole("navigation", { name: "Breadcrumb", exact: true })
+    .evaluate((nav, sweep) => {
+      const list = nav.querySelector("ol");
+      const apartNow = () => {
+        const apart: string[] = [];
+        for (const separator of nav.querySelectorAll("li [aria-hidden]")) {
+          const item = separator.closest("li");
+          const texts: Text[] = [];
+          const walker = document.createTreeWalker(item ?? nav, NodeFilter.SHOW_TEXT);
+          for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+            if (!separator.contains(node) && (node.textContent ?? "").trim() !== "") {
+              texts.push(node as Text);
+            }
+          }
+          // The name's character next to it: the first of the name after it, or the last of the one before it.
+          const after = texts.find(
+            (text) => separator.compareDocumentPosition(text) & Node.DOCUMENT_POSITION_FOLLOWING
+          );
+          const before = texts.findLast(
+            (text) => separator.compareDocumentPosition(text) & Node.DOCUMENT_POSITION_PRECEDING
+          );
+          const name = after ?? before;
+          const glyph = document.createRange();
+          if (name !== undefined) {
+            const at = after === undefined ? name.length - 1 : 0;
+            glyph.setStart(name, at);
+            glyph.setEnd(name, at + 1);
+          }
+          const drawn = [...glyph.getClientRects()].find((rect) => rect.width > 0);
+          const mark = separator.getBoundingClientRect();
+          const middle = mark.top + mark.height / 2;
+          if (drawn === undefined || middle < drawn.top || middle > drawn.bottom) {
+            apart.push(item?.textContent ?? "");
+          }
+        }
+        return apart;
+      };
+      if (sweep.length === 0 || list === null) {
+        return apartNow();
+      }
+      const found: string[] = [];
+      for (const width of sweep) {
+        list.style.maxWidth = `${String(width)}px`;
+        found.push(...apartNow().map((item) => `${String(width)}px: ${item}`));
+      }
+      list.style.maxWidth = "";
+      return found;
+    }, widths);
+}
+
+/** Every width of the trail's list from 120 to 1200px, a pixel apart. */
+const trailWidths = Array.from({ length: 1081 }, (_, at) => 120 + at);
+
+// The trail's separators each on the line of their step's name, at any width, the page's trail and its version's: a
+// long name broken in it left a "/" alone on a line in Firefox, at every width (review B's M13CB-M2). Each ends its
+// step now, in its link, glued to the name's last character (decision 968): the trail is checked at every width of
+// its own too, a pixel apart, which a name filling its line to within a separator's width shows in any engine.
+test("PG17 (page): the trail keeps each separator on the line of its step's name, the page's and its version's, at 320, 375, 768 and 1440 wide and the trail at every width", async ({
+  api,
+  signedInPage,
+}, testInfo) => {
+  const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
+  const parent = await createPage(
+    api,
+    pat,
+    notebook.id,
+    `Supercalifragilistic${"expialidocious".repeat(4)}`,
+    null,
+    "P\n"
+  );
+  const doc = await createPage(api, pat, notebook.id, unbroken("notes"), parent.id, "One\n");
+  await writeContent(api, pat, doc.id, { content: "One\n\nTwo\n", base_revision: doc.revision });
+  const page = await signedInPage(tokens);
+  const path = wikiPagePath(workspace.slug, notebook.id, doc.id);
+  const keptIn = async (shown: string) => {
+    await goto(page, shown);
+    await expect(page.getByRole("main").locator("[aria-current=page]")).toBeVisible();
+    for (const width of [320, 375, 768, 1440]) {
+      // oxlint-disable-next-line no-await-in-loop -- a width at a time
+      await page.setViewportSize({ width, height: 800 });
+      // oxlint-disable-next-line no-await-in-loop -- a width at a time
+      expect(await separatorsApart(page), `${shown} at ${String(width)}`).toEqual([]);
+    }
+    expect(await separatorsApart(page, trailWidths), `${shown}, its trail 120 to 1200px wide`).toEqual([]);
+  };
+  await keptIn(path);
+  await keptIn(`${path}/versions/1`);
 });
 
 /** A line of Go longer than the page's column (720px): its block scrolls sideways. */

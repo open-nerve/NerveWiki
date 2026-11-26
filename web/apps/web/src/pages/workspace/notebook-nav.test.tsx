@@ -64,6 +64,17 @@ test("the left column lists the account's own notebooks, then the team's, each b
       .getAllByRole("heading", { level: 2 })
       .map((h) => h.textContent)
   ).toEqual(["My notebooks", "Team notebooks"]);
+  // A name cut short has its whole as its title, on its text, not on the link, whose name it is already (M13
+  // closeout, review A's M13CA-M1).
+  const links = within(column).getAllByRole("link", { name: /^(Atlas|Beta|Plans|Zeta)$/ });
+  expect(
+    links.map((link) => [link.getAttribute("title"), link.querySelector("[title]")?.getAttribute("title")])
+  ).toEqual([
+    [null, "Beta"],
+    [null, "Plans"],
+    [null, "Atlas"],
+    [null, "Zeta"],
+  ]);
 });
 
 test.each([

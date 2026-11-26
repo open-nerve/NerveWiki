@@ -1,4 +1,4 @@
-import { Bot, ChevronRight, Ellipsis, File, FileText, Library } from "lucide-react";
+import { Bot, ChevronRight, Ellipsis, FileText, Library } from "lucide-react";
 import { computed, type IObservableValue } from "mobx";
 import { observer } from "mobx-react-lite";
 import {
@@ -22,6 +22,7 @@ import { writesNotebook } from "../../app/effective-role";
 import { lockedText } from "../../app/problem-messages";
 import { useShownRows } from "../../app/shown-rows";
 import { canAddSource, canDeleteNode, canManageNode, isAgentsPage } from "../../app/source-permissions";
+import { PageIcon } from "../../components/page-icon";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -288,7 +289,10 @@ const PageRow = memo(function PageRow({
         ref={row}
         data-active={active || undefined}
         className={cn(
-          "group relative flex h-7.5 items-center gap-1 rounded-row pr-1 text-row text-muted-foreground transition-colors duration-150 hover:bg-hover hover:text-foreground data-active:bg-accent-soft data-active:text-foreground",
+          // Forced colours take the page shown's background away: an outline of the system's colour marks it there (M13
+          // closeout, review A's M13CA-M2, as decision 845 marks the settings' row), yielding to its link's ring as the
+          // link has the keyboard's focus, as the places' rows do (review A's M13CA-F1-N2).
+          "group relative flex h-7.5 items-center gap-1 rounded-row pr-1 text-row text-muted-foreground transition-colors duration-150 hover:bg-hover hover:text-foreground data-active:bg-accent-soft data-active:text-foreground forced-colors:data-active:not-has-[a:focus-visible]:outline forced-colors:data-active:not-has-[a:focus-visible]:-outline-offset-1",
           instruction?.operation === "combine" &&
             (instruction.blocked ? "ring-2 ring-destructive" : "ring-2 ring-primary")
         )}
@@ -324,8 +328,10 @@ const PageRow = memo(function PageRow({
           {sourceRoot && <Library aria-hidden className={icon} />}
           {source && <FileText aria-hidden className={icon} />}
           {/* An ordinary page's (M5-polish 37): its name at 55px, as the Directory and History rows' are. */}
-          {!agents && !sourceRoot && !source && <File aria-hidden className={icon} />}
-          {name}
+          {!agents && !sourceRoot && !source && <PageIcon className={icon} />}
+          {/* Cut short, its whole as its title: on its text, not on the link, whose name it is (M13 closeout, review
+              A's M13CA-M1). */}
+          <span title={name}>{name}</span>
           {(agents || sourceRoot || source) && (
             <>
               {" "}
@@ -357,8 +363,9 @@ const PageRow = memo(function PageRow({
                 context.openMenu(id, event.currentTarget);
               }
             }}
-            // Shown on hover, or always where a pointer is a finger, which does not hover.
-            className="grid size-6 shrink-0 place-items-center rounded-row text-faint opacity-0 group-hover:opacity-100 hover:bg-hover hover:text-foreground focus-visible:opacity-100 aria-expanded:opacity-100 any-pointer-coarse:opacity-100"
+            // Shown on hover, or always in a narrow window, where nothing hovers or a finger may point, and in forced
+            // colours, as the cog and a list's row's actions are (decision 966; review C's M13CC-F1-N5).
+            className="grid size-6 shrink-0 place-items-center rounded-row text-faint opacity-0 group-hover:opacity-100 hover:bg-hover hover:text-foreground focus-visible:opacity-100 aria-expanded:opacity-100 [@media(hover:none)]:opacity-100 any-pointer-coarse:opacity-100 max-md:opacity-100 forced-colors:opacity-100"
           >
             <Ellipsis className="size-4" />
           </button>

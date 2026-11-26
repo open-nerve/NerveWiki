@@ -26,6 +26,9 @@ const REQUIRED = [
   // The tree's row menu and the row shown brought into the column are each engine's (M13/P2/S2, decision 789).
   ["firefox", "page/pg16-tree-menu.spec.ts", "PG16 (page): a row's menu in the tree"],
   ["webkit", "page/pg16-tree-menu.spec.ts", "PG16 (page): a row's menu in the tree"],
+  // The column's middle no stop of Tab, which Firefox alone made it, is Firefox's (M13 closeout, review A's M13CA-M3;
+  // fix check 1, review C's M13CC-F1-N1).
+  ["firefox", "page/pg16-tree-menu.spec.ts", "PG16 (page): the page shown has its row brought"],
   // The page's head, its right column and their focus are each engine's (M13/P4/S1, decision 879).
   ["firefox", "page/pg17-page-head.spec.ts", "PG17 (page): the page's head says"],
   ["webkit", "page/pg17-page-head.spec.ts", "PG17 (page): the page's head says"],
@@ -38,6 +41,17 @@ const REQUIRED = [
   // A code block's head, its Copy and the clipboard, and a done task item are each engine's (M13/P4/S2, decision 879).
   ["firefox", "page/pg17-page-head.spec.ts", "PG17 (page): a code block's head"],
   ["webkit", "page/pg17-page-head.spec.ts", "PG17 (page): a code block's head"],
+  // The edit's outline's first jump, its line measured as it is drawn, is each engine's; the trail's separators each on
+  // the line of their step's name: Firefox broke the line after one before its step, and the cell went red there alone
+  // (M13 closeout, review B's M13CB-I1 and M13CB-M2).
+  ["firefox", "page/pg17-page-head.spec.ts", "PG17 (page): edited from the page's top"],
+  ["webkit", "page/pg17-page-head.spec.ts", "PG17 (page): edited from the page's top"],
+  ["firefox", "page/pg17-page-head.spec.ts", "PG17 (page): the trail keeps each separator"],
+  ["webkit", "page/pg17-page-head.spec.ts", "PG17 (page): the trail keeps each separator"],
+  // A scroll that is not the reader's after the outline's jump: Firefox brought the window back from it, and the cell
+  // went red there alone (M13 closeout fix check 1, review B's M13CB-F1-N1).
+  ["firefox", "page/pg17-page-head.spec.ts", "PG17 (page): a scroll of the window after the outline's jump"],
+  ["webkit", "page/pg17-page-head.spec.ts", "PG17 (page): a scroll of the window after the outline's jump"],
   // The drawer of a phone's width, its focus and Escape, are each engine's (M13/P2/S3, decision 789).
   ["firefox", "shell/ui1-narrow-drawer.spec.ts", "UI1 (page): at 375 wide the left column is a drawer"],
   ["webkit", "shell/ui1-narrow-drawer.spec.ts", "UI1 (page): at 375 wide the left column is a drawer"],

@@ -139,14 +139,15 @@ function InviteForm({ workspace }: { workspace: Workspace }) {
             }}
           />
         </div>
-        <div className="space-y-1.5">
+        {/* Below md the form's whole width, as the address's field is (M13 closeout, decision 970). */}
+        <div className="space-y-1.5 max-md:w-full">
           <Label htmlFor={roleId}>{t("invitations.role")}</Label>
           <NativeSelect
             id={roleId}
             name="role"
             value={role}
             onChange={(event) => setRole(event.target.value as WorkspaceRole)}
-            className="block"
+            className="block max-md:w-full"
           >
             <RoleOptions />
           </NativeSelect>

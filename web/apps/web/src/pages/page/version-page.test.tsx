@@ -18,6 +18,7 @@ import { json, notebookJSON, problem, workspaceJSON, type Answer } from "../../t
 import { cn } from "../../lib/cn";
 import { marked } from "../../test/page-editor";
 import { bob, guide, install, pagePath, pageServer, versionJSON } from "../../test/page-server";
+import { readText } from "../../test/read-text";
 import { renderApp } from "../../test/render";
 import { lockNote } from "../../test/lock-note";
 import { docColumnClass, docShellClass, docTitleClass, headCrumbsClass, headRowClass } from "./page-layout";
@@ -65,7 +66,7 @@ test("a version shows where its page is, its revision, when it was written, by w
   expect(
     within(crumbs)
       .getAllByRole("link")
-      .map((link) => [link.textContent, link.getAttribute("href")])
+      .map((link) => [readText(link), link.getAttribute("href")])
   ).toEqual([
     ["Plans", "/lab/notebooks/0199a2b4-0000-7000-8000-0000000000c1"],
     ["Guide", pagePath(guide.id)],
@@ -349,6 +350,15 @@ test("differences whose code could not load say so, a reload helping, and show o
   expect(
     await screen.findByText("The differences could not be shown. Reloading the page usually fixes this.")
   ).toBeTruthy();
+  // Its Try again and Reload are the comparison's other buttons, small pills (decision 878; M13 closeout, review B's
+  // M13CB-F1-N2). jsdom lays nothing out: the classes are held here.
+  for (const name of ["Try again", "Reload"]) {
+    const button = within(screen.getByRole("tabpanel")).getByRole("button", { name });
+    expect(
+      ["h-7.5", "rounded-full", "px-3.25", "text-compact"].filter((each) => !button.classList.contains(each)),
+      name
+    ).toEqual([]);
+  }
   const reload = vi.fn();
   vi.stubGlobal("location", { ...window.location, reload });
   onTestFinished(() => {

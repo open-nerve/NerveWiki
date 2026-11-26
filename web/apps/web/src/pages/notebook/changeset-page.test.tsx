@@ -11,6 +11,7 @@ import { json, notebookJSON, workspaceJSON, type Answer } from "../../test/fakes
 import { changesetId, created, deleted, moved, renamed, reordered, restored, wrote } from "../../test/history-server";
 import { assetNode, bob, guide, install, linux, notes, pageNode, pagePath, pageServer } from "../../test/page-server";
 import { readAgain } from "../../test/page-panel";
+import { readText } from "../../test/read-text";
 import { renderApp } from "../../test/render";
 import { cn } from "../../lib/cn";
 import { docTitleClass, headCrumbsClass, headRowClass } from "../page/page-layout";
@@ -100,7 +101,7 @@ test("a changeset's page says what it was and who made it, from where, when it w
   expect(
     within(crumbs)
       .getAllByRole("link")
-      .map((link) => [link.textContent, link.getAttribute("href")])
+      .map((link) => [readText(link), link.getAttribute("href")])
   ).toEqual([
     ["Plans", home],
     ["History", `${home}/history`],

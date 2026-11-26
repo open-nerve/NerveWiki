@@ -184,6 +184,36 @@ test("Rename renames in a dialog, which closes; the focus goes back to the menu'
   );
 });
 
+// The rename's dialog has its buttons as the others' have them: Cancel, then Save, to the right, each on its own line
+// where a row has no room (decision 958; M13 closeout, review B's M13CB-N1).
+test("the rename's dialog has Cancel, then Save, to the right; Cancel closes it, nothing sent, the focus back on the menu's button", async () => {
+  const user = userEvent.setup();
+  const server = pageServer();
+  renderApp(home, server.app);
+
+  await choose(user, "Notes", "Rename");
+  const dialog = await screen.findByRole("dialog", { name: "Rename Notes" });
+  const buttons = within(dialog).getAllByRole("button");
+  expect(buttons.map((button) => button.textContent)).toEqual(["Cancel", "Save"]);
+  const row = buttons[0]?.parentElement;
+  expect(row?.contains(buttons[1] ?? null)).toBe(true);
+  expect(row === null || row === undefined ? [] : [...row.classList]).toEqual(
+    expect.arrayContaining(["flex", "flex-wrap", "justify-end", "gap-2"])
+  );
+  await user.type(within(dialog).getByLabelText("Title"), " draft");
+
+  await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(server.sent.some((line) => line.startsWith("PATCH"))).toBe(false);
+  await waitFor(() =>
+    expect(document.activeElement).toBe(
+      within(screen.getByRole("navigation", { name: "Pages of Plans" })).getByRole("button", {
+        name: "Actions for Notes",
+      })
+    )
+  );
+});
+
 test("a title taken, or one the rules refuse, stays in the rename dialog", async () => {
   const user = userEvent.setup();
   const server = pageServer();

@@ -38,6 +38,8 @@ test("a root page's row: its icon read by no one, its link named by the page alo
     const icon = row.querySelector("svg");
     expect(icon?.getAttribute("aria-hidden")).toBe("true");
     expect(row.querySelector("a")?.contains(icon ?? null)).toBe(true);
+    // A page's icon, the tree's (M13 closeout, decision 969).
+    expect(icon?.classList.contains("lucide-file")).toBe(true);
   }
   // Two pages under Guide (Linux is under Install, not under Guide), one under Plans for Q1, none under Notes.
   expect(within(list).getByRole("link", { name: "Guide", description: "2 subpages" })).toBeTruthy();

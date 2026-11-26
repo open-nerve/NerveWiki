@@ -247,6 +247,13 @@ test("an admin adds a member of the workspace not in the notebook yet, with a ro
 
   expect(await candidates()).toEqual(["Choose a member", "Bob (bob@example.com)", "Cy (cy@example.com)"]);
   expect(screen.getByLabelText<HTMLSelectElement>("Role").value).toBe("editor");
+  // Below md the role's select is the form's whole width, as the member's is (M13 closeout, decision 970): it and its
+  // field's wrapper, which is as wide as its content otherwise. jsdom lays nothing out.
+  const role = screen.getByLabelText("Role");
+  expect([role.classList.contains("max-md:w-full"), role.parentElement?.classList.contains("max-md:w-full")]).toEqual([
+    true,
+    true,
+  ]);
   await user.selectOptions(screen.getByLabelText("Member"), "Cy (cy@example.com)");
   await user.selectOptions(screen.getByLabelText("Role"), "Reader");
   await user.click(screen.getByRole("button", { name: "Add" }));

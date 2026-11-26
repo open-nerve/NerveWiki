@@ -1,7 +1,7 @@
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { search, searchKeymap } from "@codemirror/search";
-import { Compartment, EditorState, Prec } from "@codemirror/state";
-import { EditorView, keymap } from "@codemirror/view";
+import { Compartment, EditorState, Prec, type Text } from "@codemirror/state";
+import { EditorView, keymap, type ViewUpdate } from "@codemirror/view";
 import { use, useContext, useId, useImperativeHandle, useLayoutEffect, useRef, type Ref, type RefObject } from "react";
 
 import { useT, type Translate } from "../i18n/i18n";
@@ -72,6 +72,35 @@ type Live = Pick<SourceEditorProps, "context" | "controls" | "onChange" | "outli
 /** How long a composition's end waits for its text, which some browsers give after it. */
 const compositionSettles = 50;
 
+/** Where a jump puts its line: at the window's top, 16px below it (decision 876). */
+const jumpTo = (at: number) => EditorView.scrollIntoView(at, { y: "start", yMargin: 16 });
+
+/**
+ * How often, and how long after it, a jump's line is put back at the window's top as what it passed is measured
+ * (EditorHost.reveal): the measuring that moves it is done in a few frames.
+ */
+const realignments = 4;
+const realigning = 1000;
+
+/** What the reader does that ends a jump's realigning: a scroll, a press, a touch, a key. */
+const readerActs = ["wheel", "pointerdown", "touchstart", "keydown"] as const;
+
+/** How far below the window's top a jump's line is at its place (decision 876's 16px, whatever a font makes of it). */
+const placedWithin = 48;
+
+/** windowAtFoot is whether the window is scrolled as far down as it goes, where a jump scrolls it (jumpTo). */
+function windowAtFoot(): boolean {
+  const root = document.scrollingElement ?? document.documentElement;
+  return root.scrollTop + root.clientHeight >= root.scrollHeight - 1;
+}
+
+/**
+ * A jump's line kept at the window's top (EditorHost.reveal): where, in which content, how many more times; whether
+ * it has been at its place yet, and where in the window the editor last left it (its top), as the scrolls it sees
+ * tell its own from another's.
+ */
+type Aligned = { at: number; doc: Text; left: number; end: () => void; placed: boolean; top: number | undefined };
+
 /** The editor's words in the language of the app: its phrases and its content's label. */
 const wording = new Compartment();
 
@@ -100,6 +129,8 @@ class EditorHost {
   private closing: (() => void)[] = [];
   /** The extensions' work going (EditorControls.going). */
   private readonly work = new Set<Promise<void>>();
+  /** The jump whose line is kept at the window's top while what it passed is measured (reveal). */
+  private aligned: Aligned | undefined = undefined;
   private destroyed = false;
 
   constructor(
@@ -168,8 +199,41 @@ class EditorHost {
     }
   }
 
+  /**
+   * reveal puts the cursor at the start of the line at, the line at the window's top, and focuses the editor (decision
+   * 876). The lines a jump passes CodeMirror had estimated, not drawn: drawn and measured as it gets there, they moved
+   * the line off its place, above the window on a first jump down a long page (M13 closeout, review B's M13CB-I1). So
+   * each update of the measuring whose heights changed scrolls to the line once more, in a microtask of its own (no
+   * dispatch in an update), the cursor and the content as they were, a few times at most within a second; the reader's
+   * scroll, press, touch or key ends it. So does a scroll that is not the editor's, once the line has been at its
+   * place: a script's, the browser's find's or a screen reader's, which come with none of those. Firefox pulled the
+   * window back to the line from one, the lines it showed measured (M13 closeout fix check 1, review B's M13CB-F1-N1).
+   * The editor's own leave the line at its place or where its last update left it (scrolled).
+   */
+  reveal(at: number): void {
+    this.aligned?.end();
+    this.view.dispatch({ selection: { anchor: at }, effects: jumpTo(at) });
+    this.view.focus();
+    const end = () => {
+      clearTimeout(timer);
+      for (const name of readerActs) {
+        window.removeEventListener(name, end, true);
+      }
+      if (this.aligned === aligned) {
+        this.aligned = undefined;
+      }
+    };
+    const timer = setTimeout(end, realigning);
+    for (const name of readerActs) {
+      window.addEventListener(name, end, { capture: true, passive: true });
+    }
+    const aligned: Aligned = { at, doc: this.view.state.doc, left: realignments, end, placed: false, top: undefined };
+    this.aligned = aligned;
+  }
+
   destroy(): void {
     this.destroyed = true;
+    this.aligned?.end();
     clearTimeout(this.settling);
     for (const { drop } of this.waiting.splice(0)) {
       drop();
@@ -193,6 +257,71 @@ class EditorHost {
     for (const done of this.closing.splice(0)) {
       done();
     }
+  }
+
+  /**
+   * scrolled ends a jump's realigning as a scroll that is not the editor's moved its line, once the line has been at
+   * its place (reveal). It is the editor's own scroll observer, which it calls before it measures what a scroll shows,
+   * and realigns: for a scroll's event, and for what it sees come into view, which in Firefox comes first. The scroll is
+   * the editor's, and the line at its place, where the line is in [0, 48] below the window's top, where the editor's
+   * last update left it (its own scroll landed), or with the window at its foot, which the line of a section near the
+   * page's end cannot go above: that line never reached the window's top, and a script's scroll after its jump was
+   * pulled back in the three engines (fix check 2, review B's M13CB-F2-N1, review C's M13CC-F2-N1). At the foot only
+   * with the line in the window, where the editor's scroll to it leaves it: a scroll to the foot from a line higher up,
+   * as the browser's find's to a word at the page's end, was pulled back to the line (fix check 3, review C's
+   * M13CC-F3-N1).
+   */
+  private scrolled(): void {
+    const aligned = this.aligned;
+    if (aligned === undefined) {
+      return;
+    }
+    if (this.view.state.doc !== aligned.doc) {
+      aligned.end();
+      return;
+    }
+    const top = this.topOf(aligned.at);
+    const landed = aligned.top !== undefined && Math.abs(top - aligned.top) <= 1;
+    if ((top >= 0 && top <= placedWithin) || landed || (windowAtFoot() && top >= 0 && top < window.innerHeight)) {
+      aligned.placed = true;
+    } else if (aligned.placed) {
+      aligned.end();
+      return;
+    }
+    aligned.top = top;
+  }
+
+  /** topOf is where the line at is in the window, by the editor's heights: its top's distance below the window's top. */
+  private topOf(at: number): number {
+    return this.view.lineBlockAt(at).top + this.view.documentTop;
+  }
+
+  /**
+   * realign scrolls to a jump's line again as the update measured heights that moved it (reveal); each update, where
+   * the editor left the line, which its scrolls that follow keep.
+   */
+  private realign(update: ViewUpdate): void {
+    const aligned = this.aligned;
+    if (aligned === undefined) {
+      return;
+    }
+    const kept = (state: EditorState) => state.doc === aligned.doc && state.selection.main.head === aligned.at;
+    if (kept(update.state)) {
+      aligned.top = this.topOf(aligned.at);
+    }
+    if (!update.heightChanged) {
+      return;
+    }
+    if (!kept(update.state) || aligned.left === 0) {
+      aligned.end();
+      return;
+    }
+    aligned.left -= 1;
+    queueMicrotask(() => {
+      if (this.aligned === aligned && !this.destroyed && kept(this.view.state)) {
+        this.view.dispatch({ effects: jumpTo(aligned.at) });
+      }
+    });
   }
 
   private runWaiting(): void {
@@ -259,6 +388,7 @@ class EditorHost {
         wording.of(this.wordingOf(t)),
         readOnly.of(readOnlyAs(this.locked)),
         EditorView.updateListener.of((update) => {
+          this.realign(update);
           if (update.docChanged) {
             this.changes += 1;
             this.live.current.onChange(this.changes);
@@ -273,6 +403,7 @@ class EditorHost {
             clearTimeout(this.settling);
             this.settling = setTimeout(() => this.runWaiting(), compositionSettles);
           },
+          scroll: () => this.scrolled(),
         }),
         composed.extension,
       ],
@@ -340,19 +471,14 @@ export function SourceEditor({
       working: () => editor.current?.working === true,
       settled: () => editor.current?.settled() ?? Promise.resolve(),
       reveal: (index) => {
-        const view = editor.current?.view;
-        const at = view === undefined ? undefined : where(view, index);
-        if (view === undefined || at === undefined) {
+        const host = editor.current;
+        const at = host === null ? undefined : where(host.view, index);
+        if (host === null || at === undefined) {
           return;
         }
         // The line's start: what is typed at its very start comes before the place mapped, and a heading in a quote or
         // a list item starts after its "> " or "- " (review A's R1-N3).
-        const start = view.state.doc.lineAt(at).from;
-        view.dispatch({
-          selection: { anchor: start },
-          effects: EditorView.scrollIntoView(start, { y: "start", yMargin: 16 }),
-        });
-        view.focus();
+        host.reveal(host.view.state.doc.lineAt(at).from);
       },
     }),
     []

@@ -116,6 +116,9 @@ test("a notebook's settings: three groups, the notebook's named as the list has 
 
   expect(groups()).toEqual(["Settings", "Workspace settings", "Notebook settings"]);
   expect(titleOf(group("Notebook settings")).textContent).toBe("Notebook Plans");
+  // A name cut short has its whole as its title (M13 closeout, review A's M13CA-M1).
+  expect(titleOf(group("Workspace settings")).querySelector("bdi")?.getAttribute("title")).toBe("Lab");
+  expect(titleOf(group("Notebook settings")).querySelector("bdi")?.getAttribute("title")).toBe("Plans");
   expect(linksOf("Notebook settings")).toEqual([
     ["General", "page"],
     ["Members", null],
@@ -227,6 +230,8 @@ test("entered from a notebook's page, Back goes there, named by the notebook as 
   await user.click(await screen.findByRole("link", { name: "Settings of Plans" }));
   await screen.findByRole("heading", { level: 1, name: "General" });
   expect([back().textContent, back().getAttribute("href")]).toEqual(["Back to Plans", home]);
+  // Cut short, the name it goes to has its whole as its title (M13 closeout, review A's M13CA-M1).
+  expect(back().querySelector("[title]")?.getAttribute("title")).toBe("Plans");
 
   const name = await screen.findByLabelText<HTMLInputElement>("Name");
   await user.clear(name);
@@ -235,6 +240,8 @@ test("entered from a notebook's page, Back goes there, named by the notebook as 
 
   await waitFor(() => expect([back().textContent, back().getAttribute("href")]).toEqual(["Back to Roadmap", home]));
   expect(titleOf(group("Notebook settings")).textContent).toBe("Notebook Roadmap");
+  expect(back().querySelector("[title]")?.getAttribute("title")).toBe("Roadmap");
+  expect(titleOf(group("Notebook settings")).querySelector("bdi")?.getAttribute("title")).toBe("Roadmap");
 });
 
 test("entered from a notebook's address the list read has not (gone), Back goes to its workspace's home", async () => {
@@ -366,7 +373,7 @@ test("at a phone's width, the workspace's settings arrived at after an arrival: 
   const menu = screen.getByRole("button", { name: "Navigation" });
 
   await user.click(menu);
-  await user.click(await within(column()).findByRole("link", { name: "Settings" }));
+  await user.click(await within(column()).findByRole("link", { name: "Workspace settings" }));
   const general = await screen.findByRole("heading", { level: 1, name: "General" });
   await waitFor(() => expect(document.activeElement).toBe(general));
 
@@ -385,7 +392,7 @@ test("at a phone's width, the account's settings arrived at after an arrival: th
   await screen.findByRole("heading", { level: 1, name: "Lab" });
   // The account's settings are another layout's: its menu another button, found each time.
   await user.click(navigation());
-  await user.click(await within(column()).findByRole("link", { name: "Settings" }));
+  await user.click(await within(column()).findByRole("link", { name: "Workspace settings" }));
   await screen.findByRole("heading", { level: 1, name: "General" });
 
   await user.click(navigation());

@@ -164,9 +164,14 @@ export function breadcrumbs(page: Page): Promise<string[]> {
     .getByRole("navigation", { name: "Breadcrumb", exact: true })
     .getByRole("listitem")
     .evaluateAll((items) =>
-      items.map((item) =>
-        [...item.querySelectorAll(":scope > :not([aria-hidden])")].map((step) => step.textContent ?? "").join("")
-      )
+      items.map((item) => {
+        // A step's separator is its link's, for the eye alone (M13 closeout, decision 968).
+        const read = item.cloneNode(true) as Element;
+        for (const hidden of read.querySelectorAll("[aria-hidden]")) {
+          hidden.remove();
+        }
+        return read.textContent ?? "";
+      })
     );
 }
 

@@ -1,4 +1,5 @@
 import type { ApiClient, Page as WikiPage } from "@nervewiki/api-client";
+import type { Locator, Page, Request } from "@playwright/test";
 
 import { emailFor } from "../../fixtures/auth";
 import { joinOnboarded } from "../../fixtures/invitations";
@@ -9,8 +10,73 @@ import { createNotebook } from "../../fixtures/notebooks";
 import { createPage } from "../../fixtures/pages";
 import { openDrawer } from "../../fixtures/shell-pages";
 import { expect, test } from "../../fixtures/test";
-import { pageHeading, pageTree, quickSwitchFor, renameDialog, wikiPagePath } from "../../fixtures/wiki-pages";
+import {
+  pageHeading,
+  pageTree,
+  quickSwitchFor,
+  renameDialog,
+  treeTitles,
+  wikiPagePath,
+} from "../../fixtures/wiki-pages";
 import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
+
+/** What happened as a key was held: the menus and the dialogs that came and went, the tree's new rows, the writes. */
+type Held = { menus: [number, number]; dialogs: [number, number]; rows: number; writes: string[] };
+
+/**
+ * recordHeld records what happens in page from now: the DOM's changes as they are made, a menu that opened and closed
+ * again counted, and the requests that write. Its result reads the record, two frames on. A repeat that did something
+ * shows in it however it was timed, where an expectation waits for a state and reads it once (M13 closeout fix check
+ * 1, review C's M13CC-F1-M1: a repeat let through opened the menu and made a page in Chromium, the step passing).
+ */
+async function recordHeld(page: Page): Promise<() => Promise<Held>> {
+  const writes: string[] = [];
+  const onRequest = (request: Request) => {
+    const { pathname } = new URL(request.url());
+    if (request.method() !== "GET" && pathname.startsWith("/api/")) {
+      writes.push(`${request.method()} ${pathname}`);
+    }
+  };
+  page.on("request", onRequest);
+  await page.evaluate(() => {
+    const held: Omit<Held, "writes"> = { menus: [0, 0], dialogs: [0, 0], rows: 0 };
+    // oxlint-disable-next-line unicorn/consistent-function-scoping -- serialized into the page: it stays in the body
+    const count = (node: Node, selector: string) =>
+      node instanceof Element ? Number(node.matches(selector)) + node.querySelectorAll(selector).length : 0;
+    const dialog = "[role=dialog], [role=alertdialog]";
+    const tally = (changes: MutationRecord[]) => {
+      for (const change of changes) {
+        const tree = change.target instanceof Element && change.target.closest("nav[aria-label^='Pages of']") !== null;
+        for (const node of change.addedNodes) {
+          held.menus[0] += count(node, "[role=menu]");
+          held.dialogs[0] += count(node, dialog);
+          held.rows += tree ? count(node, "li") : 0;
+        }
+        for (const node of change.removedNodes) {
+          held.menus[1] += count(node, "[role=menu]");
+          held.dialogs[1] += count(node, dialog);
+        }
+      }
+    };
+    const observer = new MutationObserver(tally);
+    observer.observe(document.body, { childList: true, subtree: true });
+    Object.assign(window, {
+      heldRecord: () => {
+        tally(observer.takeRecords());
+        observer.disconnect();
+        return held;
+      },
+    });
+  });
+  return async () => {
+    const held = await page.evaluate(async () => {
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      return (window as unknown as { heldRecord: () => Omit<Held, "writes"> }).heldRecord();
+    });
+    page.off("request", onRequest);
+    return { ...held, writes };
+  };
+}
 
 // PG16, the page tree in the three browsers (M13/P2/S2; M12-polish item 14): a row's menu, by the pointer and by the
 // keyboard, and its rename's dialog, the focus back on the row's button each time; the row of the page shown brought
@@ -50,11 +116,75 @@ test("PG16 (page): a row's menu in the tree opens at its button, by the pointer 
   const title = dialog.getByLabel("Title", { exact: true });
   await expect(title).toBeFocused();
   await expect(title).toHaveValue("Notes");
-  // The dialog's cancel: it has Save alone.
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
   await expect(button).toBeFocused();
+
+  // Enter held on a dialog's Cancel closes it; its repeats fall on the row's button the focus goes back to, and press
+  // nothing there: they opened its menu, then made a page by its first item (M13 closeout, review B's M13CB-M1,
+  // decision 967). The key's first press, then its repeats once the focus is back, then let go: the dialog closed, no
+  // menu nor dialog opened meanwhile, no row, no write.
+  await button.press("Enter");
+  await menu.getByRole("menuitem", { name: "Move to…", exact: true }).click();
+  const move = page.getByRole("dialog", { name: "Move Notes", exact: true });
+  await move.getByRole("button", { name: "Cancel", exact: true }).focus();
+  const cancelled = await recordHeld(page);
+  await page.keyboard.down("Enter");
+  await expect(move).toBeHidden();
+  await expect(button).toBeFocused();
+  await repeats(page);
+  await page.keyboard.up("Enter");
+  expect(await cancelled()).toEqual({ menus: [0, 0], dialogs: [0, 1], rows: 0, writes: [] });
+  await expect(button).toBeFocused();
+  await expect(menu).toBeHidden();
+
+  // Enter held on the row's button opens its menu, and its repeats, the first item focused, press none of its items:
+  // they made a page by New subpage, the menu gone, the focus on its heading (M13 closeout fix check 1, review B's
+  // M13CB-F1-M1). The first press, then its repeats once the menu has the focus, as a system repeats a key after a
+  // while.
+  const opened = await recordHeld(page);
+  await page.keyboard.down("Enter");
+  const first = menu.getByRole("menuitem", { name: "New subpage", exact: true });
+  await expect(first).toBeFocused();
+  await repeats(page);
+  await page.keyboard.up("Enter");
+  expect(await opened()).toEqual({ menus: [1, 0], dialogs: [0, 0], rows: 0, writes: [] });
+  await expect(first).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(menu).toBeHidden();
+  await expect(button).toBeFocused();
+
+  // Enter held on an item that opens a dialog opens it once, and its repeats press nothing in it: they sent Rename's
+  // form, which closed, and in WebKit Move's, a write (M13 closeout fix check 2, review C's M13CC-F2-M1). The menu
+  // opened by the pointer, the item focused; the key's first press, its repeats once the dialog has the focus, let go:
+  // the dialog open still, nothing written.
+  const heldOn = async (item: string, opens: Locator) => {
+    await button.click();
+    await menu.getByRole("menuitem", { name: item, exact: true }).focus();
+    const pressed = await recordHeld(page);
+    await page.keyboard.down("Enter");
+    await expect(opens.locator(":focus")).toHaveCount(1);
+    await repeats(page);
+    await page.keyboard.up("Enter");
+    expect(await pressed(), item).toEqual({ menus: [0, 1], dialogs: [1, 0], rows: 0, writes: [] });
+    await expect(opens).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(opens).toBeHidden();
+    await expect(button).toBeFocused();
+  };
+  await heldOn("Move to…", move);
+  await heldOn("Rename", renameDialog(page, "Notes"));
+  await expect(pageHeading(page, "Roadmap")).toBeVisible();
+  expect(await treeTitles(page, "Plans")).toEqual(["Roadmap", "Notes"]);
 });
+
+/** repeats has the key held, Enter, repeat three times. */
+async function repeats(page: Page): Promise<void> {
+  for (let repeat = 0; repeat < 3; repeat += 1) {
+    // oxlint-disable-next-line no-await-in-loop -- a key's repeats, one after the other
+    await page.keyboard.down("Enter");
+  }
+}
 
 /** Creates the pages titled titles in the notebook notebookId, one after the other, each last at its root. */
 async function createInOrder(
@@ -101,6 +231,14 @@ test("PG16 (page): the page shown has its row brought into the left column, whic
   await expect(row("Page 60")).toBeInViewport();
   expect(await area.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
   expect(await windowScroll()).toBe(0);
+
+  // The column's middle scrolls, which has Firefox make it a stop of Tab, nameless, between Search and Home: it is none
+  // (M13 closeout, review A's M13CA-M3). Playwright's WebKit on macOS tabs to fields alone, as the system has it.
+  if (testInfo.project.name !== "webkit") {
+    await page.getByRole("search").getByRole("button", { name: "Search", exact: true }).focus();
+    await page.keyboard.press("Tab");
+    await expect(page.locator("[data-shell]").getByRole("link", { name: "Home", exact: true })).toBeFocused();
+  }
 
   // Then twice by the quick switch, keys pressed before each (review B-I1).
   expect(await quickSwitchFor(page, "Page 01")).toEqual([["Page 01", ""]]);

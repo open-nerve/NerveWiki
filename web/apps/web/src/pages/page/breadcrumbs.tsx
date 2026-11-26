@@ -43,7 +43,7 @@ export function Breadcrumbs({
  * the page it is on: the page it leads to is arrived at, its title taking
  * the focus (v0.1 design 13.2, item 17; M5-polish 12.3). Faint and 13px, as the mockup's .crumb: a step lights up
  * as it is hovered, unlined (00-M13 4.7), where the reader is in the secondary text and heavier (M13/P4/S1).
- * className is its nav's.
+ * className is its nav's. Each step's separator ends its link (Separator).
  */
 export function BreadcrumbTrail({
   steps,
@@ -58,16 +58,14 @@ export function BreadcrumbTrail({
   return (
     <nav aria-label={t("page.breadcrumb")} className={className}>
       <ol className="flex flex-wrap items-center gap-x-1 text-compact text-faint [overflow-wrap:anywhere]">
-        {steps.map((step, i) => (
+        {steps.map((step) => (
           <li key={step.key}>
-            {i > 0 && <Separator />}
             <Link to={step.to} state={arrived} className="hover:text-foreground">
-              {step.name}
+              <Named name={step.name} />
             </Link>
           </li>
         ))}
         <li className="font-medium text-muted-foreground">
-          {steps.length > 0 && <Separator />}
           <span aria-current="page">{current}</span>
         </li>
       </ol>
@@ -75,10 +73,37 @@ export function BreadcrumbTrail({
   );
 }
 
-/** Separator stands between two steps, for the eye: screen readers have the list. */
+/** The characters of a name as the reader sees them: a letter and its marks, an emoji and its joins, are one. */
+const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+
+/**
+ * Named is a step's name, then its separator, glued to the name's last character: a name broken anywhere (one without
+ * a break, [overflow-wrap:anywhere]) that filled its line to within the separator's width had the line broken before
+ * the separator, leaving it alone on the next line, in the three engines at widths a font decides (M13 closeout,
+ * decision 968). The link's name is the step's whole name still.
+ */
+function Named({ name }: { name: string }) {
+  const last = [...graphemes.segment(name)].at(-1)?.segment ?? "";
+  return (
+    <>
+      {name.slice(0, name.length - last.length)}
+      <span className="whitespace-nowrap">
+        {last}
+        <Separator />
+      </span>
+    </>
+  );
+}
+
+/**
+ * Separator stands between two steps, for the eye: screen readers have the list, and a link's name is its step's
+ * alone. It ends the step before it, in its link, glued to its name (Named): the line breaks after it, between two
+ * steps, a long name broken in its own; before its step, a sibling of it, Firefox broke the line after it, leaving it
+ * alone on a line at any width (M13 closeout, review B's M13CB-M2, decision 968).
+ */
 function Separator() {
   return (
-    <span aria-hidden className="pr-1 font-normal text-faint">
+    <span aria-hidden className="ps-1 font-normal text-faint">
       /
     </span>
   );

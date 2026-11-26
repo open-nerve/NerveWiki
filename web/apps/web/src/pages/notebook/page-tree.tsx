@@ -32,22 +32,25 @@ import { useSourceMove } from "./source-move-confirmation";
 /**
  * What shows the row's cog and the tree's New page (decision 778): a hover
  * of the notebook's row or of either, or the keyboard's focus; always where
- * nothing hovers, on a narrow screen, and in forced colours, where a faint
- * system colour reads poorly. A hover of the tree's rows or of the places
- * does not. Their icons line up with the rows' ⋯ (M13/P2/S2, review B).
+ * nothing hovers or a finger may point, as the rows' ⋯ and a list's row's
+ * actions (decision 966), on a narrow screen, and in forced colours, where a
+ * faint system colour reads poorly. A hover of the tree's rows or of the
+ * places does not. Their icons line up with the rows' ⋯ (M13/P2/S2, review B).
  */
 const shown =
-  "opacity-40 transition-[opacity,color,background-color] duration-150 hover:opacity-100 focus-visible:opacity-100 group-has-[[data-notebook-row]:hover]/notebook:opacity-100 group-has-[[data-notebook-new]:hover]/notebook:opacity-100 [@media(hover:none)]:opacity-100 max-md:opacity-100 forced-colors:opacity-100";
+  "opacity-40 transition-[opacity,color,background-color] duration-150 hover:opacity-100 focus-visible:opacity-100 group-has-[[data-notebook-row]:hover]/notebook:opacity-100 group-has-[[data-notebook-new]:hover]/notebook:opacity-100 [@media(hover:none)]:opacity-100 any-pointer-coarse:opacity-100 max-md:opacity-100 forced-colors:opacity-100";
 
 /**
  * A Directory or History row of an LLM Wiki's tree: a page's row at the root, its icon where a page's is, its name
- * where a page's is, marked as the page shown is (decision 780; M5-polish 38.5).
+ * where a page's is, marked as the page shown is (decision 780; M5-polish 38.5). Forced colours take its background
+ * away: an outline of the system's colour marks it there (M13 closeout, review A's M13CA-M2, as decision 845 marks the
+ * settings' row), but while it has the keyboard's focus, whose ring, an outline too, it would take the place of.
  */
 function placeRow({ isActive }: { isActive: boolean }): string {
   return cn(
     "flex h-7.5 items-center gap-2.25 rounded-row pr-2 pl-7.5 text-row transition-colors duration-150",
     isActive
-      ? "bg-accent-soft font-medium text-foreground [&_svg]:text-accent"
+      ? "bg-accent-soft font-medium text-foreground forced-colors:not-focus-visible:outline forced-colors:not-focus-visible:-outline-offset-1 [&_svg]:text-accent"
       : "text-muted-foreground hover:bg-hover hover:text-foreground"
   );
 }
@@ -276,7 +279,10 @@ export const PageTree = observer(function PageTree({ notebook }: { notebook: Not
         data-notebook-row
         data-home={atHome || undefined}
         className={cn(
-          "flex h-7.5 items-stretch rounded-row text-row text-muted-foreground transition-colors duration-150 hover:bg-hover hover:text-foreground [@media(hover:hover)]:not-data-home:group-has-[[data-notebook-new]:hover]/notebook:bg-hover [@media(hover:hover)]:not-data-home:group-has-[[data-notebook-new]:hover]/notebook:text-foreground data-home:bg-active data-home:font-medium data-home:text-foreground",
+          // Forced colours outline it on its home, but while its link has the keyboard's focus, whose ring would cross
+          // the outline at the corners, as the places' rows have it (M13 closeout fix check 1, review A's
+          // M13CA-F1-N2); the cog's ring inside it.
+          "flex h-7.5 items-stretch rounded-row text-row text-muted-foreground transition-colors duration-150 hover:bg-hover hover:text-foreground [@media(hover:hover)]:not-data-home:group-has-[[data-notebook-new]:hover]/notebook:bg-hover [@media(hover:hover)]:not-data-home:group-has-[[data-notebook-new]:hover]/notebook:text-foreground data-home:bg-active data-home:font-medium data-home:text-foreground forced-colors:data-home:not-has-[h2>a:focus-visible]:outline forced-colors:data-home:not-has-[h2>a:focus-visible]:-outline-offset-1",
           // Room for the cog and New page, or the cog alone.
           writer ? "pr-14" : "pr-8"
         )}
@@ -286,7 +292,9 @@ export const PageTree = observer(function PageTree({ notebook }: { notebook: Not
           <NavLink to={home} end className="flex min-w-0 flex-1 items-center gap-2.25 rounded-row pl-2">
             <ChevronDown aria-hidden className="-mr-1 -ml-0.5 size-3.5 shrink-0 text-faint" />
             <Book aria-hidden className="size-4 shrink-0" />
-            <span className="min-w-0 truncate">{notebook.name}</span>
+            <span title={notebook.name} className="min-w-0 truncate">
+              {notebook.name}
+            </span>
           </NavLink>
         </h2>
         {/* It leaves with the column, the settings' directory taking its place: arrived at (M13/P3/S1, 816). */}

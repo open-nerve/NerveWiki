@@ -1123,6 +1123,11 @@ test("the trash is a list's page: its title, its notes, its items a card's rows 
       expect.arrayContaining(["text-faint", "self-start", "mt-0.5"])
     );
   }
+  // A page's icon, the tree's; an attachment's its kind's (M13 closeout, decision 969).
+  expect(
+    rows().map((each) => /\blucide-[\w-]+/.exec(each.querySelector("p svg")?.getAttribute("class") ?? "")?.[0])
+  ).toEqual(expect.arrayContaining(["lucide-file", "lucide-file-image"]));
+  expect(rows().some((each) => each.querySelector("p svg")?.classList.contains("lucide-scroll-text"))).toBe(false);
   // Its facts in a block of their own, the row's size and grey; restores-to the last line still.
   const facts = link.parentElement?.nextElementSibling as HTMLElement;
   expect(facts.className).toBe(cn(factsClass, "space-y-1"));

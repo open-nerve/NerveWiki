@@ -2,6 +2,7 @@ import { List } from "lucide-react";
 import { makeAutoObservable, observableRef } from "mobx";
 import { observer } from "mobx-react-lite";
 
+import { swallowHeldKeys } from "../../components/ui/dialog";
 import type { OutlineHeading, OutlineSink } from "../../editor/edit-outline";
 import { useT } from "../../i18n/i18n";
 import { listedUpTo } from "./page-outline";
@@ -70,7 +71,15 @@ export const EditOutline = observer(function EditOutline({ box }: { box: Outline
             >
               <button
                 type="button"
-                onClick={() => box.reveal?.(index)}
+                onClick={(event) => {
+                  // Pressed by the keyboard, the key held presses nothing in the editor, which takes the focus: Enter
+                  // held put a new line before the heading for each repeat (M13 closeout fix check 1, review B's
+                  // M13CB-F1-M1), as a dialog closing has it (decision 967).
+                  if (event.detail === 0) {
+                    swallowHeldKeys();
+                  }
+                  box.reveal?.(index);
+                }}
                 className="block w-full cursor-pointer ps-3 pe-1 text-start leading-snug text-muted-foreground hover:text-foreground"
               >
                 {/* Two lines at most on the text's own box: WebKit lays out no button as the clamp's -webkit-box. */}

@@ -95,14 +95,15 @@ export function Comparison({ before, after, label, beforeName, afterName, shown 
  * stretches show (unfolded). Gone with the focus, the comparison no longer
  * folding, it calls left before it leaves the document (M5-polish 21.7):
  * in a component of its own, so that it leaves with it. The conflict's
- * panel has it too.
+ * panel has it too. A small pill, as the conflict's Keep mine and Discard
+ * mine are (decision 878; M13 closeout, review B's M13CB-N2).
  */
 export function ShowUnchanged({ unfolded, toggle, left }: { unfolded: boolean; toggle: () => void; left: () => void }) {
   const t = useT();
   const own = useRef<HTMLButtonElement>(null);
   useFocusLeaving(own, left);
   return (
-    <Button ref={own} variant="outline" aria-pressed={unfolded} onClick={toggle}>
+    <Button ref={own} variant="outline" size="sm" shape="pill" aria-pressed={unfolded} onClick={toggle}>
       {t("editor.showUnchanged")}
     </Button>
   );
@@ -139,6 +140,8 @@ export function ChunkNotLoaded({
       <div className="flex gap-2">
         <Button
           variant="outline"
+          size="sm"
+          shape="pill"
           className="aria-disabled:opacity-50"
           aria-disabled={loading || undefined}
           onClick={loading ? undefined : retry}
@@ -146,7 +149,7 @@ export function ChunkNotLoaded({
           {t("status.retry")}
         </Button>
         {reload && (
-          <Button variant="outline" onClick={() => window.location.reload()}>
+          <Button variant="outline" size="sm" shape="pill" onClick={() => window.location.reload()}>
             {t("error.reload")}
           </Button>
         )}

@@ -77,7 +77,9 @@ export const UserMenu = observer(function UserMenu({ place }: { place: "row" | "
               >
                 {initialOf(name)}
               </span>
-              <span className="min-w-0 truncate">{name}</span>
+              <span title={name} className="min-w-0 truncate">
+                {name}
+              </span>
               <Ellipsis className="ml-auto text-faint" />
             </Button>
           ) : (
@@ -94,7 +96,9 @@ export const UserMenu = observer(function UserMenu({ place }: { place: "row" | "
               >
                 {initialOf(name)}
               </span>
-              <span className="max-w-32 min-w-0 truncate">{name}</span>
+              <span title={name} className="max-w-32 min-w-0 truncate">
+                {name}
+              </span>
             </Button>
           )}
         </DropdownMenuTrigger>

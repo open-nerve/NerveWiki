@@ -3,6 +3,7 @@ import { useRef, useState, type FormEvent, type ReactNode } from "react";
 import { FormField } from "../components/form-field";
 import { Alert } from "../components/ui/alert";
 import { Button } from "../components/ui/button";
+import { DialogClose } from "../components/ui/dialog";
 import type { FieldError } from "../services/api";
 import { useForm } from "./form";
 import type { FieldMessage } from "./problem-messages";
@@ -27,6 +28,8 @@ type RenameFormProps = {
   explain?: (error: unknown) => ReactNode;
   saveLabel: string;
   savedLabel: string;
+  /** Cancel's, which closes the dialog the form is in. */
+  cancelLabel: string;
   /** Called once a save went through, as a dialog that closes then. */
   onSaved?: () => void;
 };
@@ -39,7 +42,10 @@ type RenameFormProps = {
  * current name, a rename by another tab or admin too: Save then sends
  * nothing back over it. A name edited while its rename was out keeps the
  * edit, as DisplayNameForm has it: what it shows then is not what was
- * saved, and the next save sends it.
+ * saved, and the next save sends it. It is a dialog's (a page's, an
+ * attachment's; a settings' row is NameRow): its buttons, Cancel then Save,
+ * to the right, each on its own line where a row has no room, as the other
+ * dialogs' (decision 958; M13 closeout, review B's M13CB-N1).
  */
 export function RenameForm({
   current,
@@ -54,6 +60,7 @@ export function RenameForm({
   explain,
   saveLabel,
   savedLabel,
+  cancelLabel,
   onSaved,
 }: RenameFormProps) {
   /** What was typed since the last save; none, the current name. */
@@ -100,11 +107,14 @@ export function RenameForm({
           setSaved(false);
         }}
       />
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <output className="me-auto text-sm text-muted-foreground">{saved ? savedLabel : ""}</output>
+        <DialogClose asChild>
+          <Button variant="outline">{cancelLabel}</Button>
+        </DialogClose>
         <Button type="submit" disabled={sending}>
           {saveLabel}
         </Button>
-        <output className="text-sm text-muted-foreground">{saved ? savedLabel : ""}</output>
       </div>
     </form>
   );

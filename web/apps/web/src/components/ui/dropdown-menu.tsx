@@ -1,8 +1,9 @@
 import { Check, ChevronRight } from "lucide-react";
 import { DropdownMenu as Primitive } from "radix-ui";
-import type { ComponentProps } from "react";
+import type { ComponentProps, KeyboardEvent } from "react";
 
 import { cn } from "../../lib/cn";
+import { swallowHeldKeys } from "./dialog";
 
 export const DropdownMenu = Primitive.Root;
 export const DropdownMenuTrigger = Primitive.Trigger;
@@ -30,12 +31,35 @@ export function DropdownMenuContent({ className, sideOffset = 4, ...props }: Com
 const item =
   "relative flex h-8 cursor-default items-center gap-2.5 rounded-row text-row outline-none select-none focus:bg-active focus:text-foreground focus:ring-ring focus:ring-inset in-data-[modality=keyboard]:focus:ring-2 focus-visible:outline-hidden data-disabled:pointer-events-none data-disabled:opacity-50 [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-muted-foreground";
 
+/**
+ * pressedOnce has a key held on an item press it once (M13 closeout fix check 1, review B's M13CB-F1-M1). Radix
+ * presses an item on keydown, a repeat's too, unless the item's own handler, called first, prevents it: Enter held on
+ * a menu's button opened the menu, and its repeats pressed the first item, focused, the tree's New subpage making
+ * pages, an attachment's Open opening tabs. A repeat of Enter or Space presses nothing; a new press does. And the
+ * repeats of the press press nothing where the focus goes then, till the key is let go (swallowHeldKeys, decision
+ * 967): in the dialog the item opens they sent Rename's form, pressed Delete's Cancel and, in WebKit, sent Move's; on
+ * the menu's button, the menu closed by a choice, they opened it again (fix check 2, review C's M13CC-F2-M1, review
+ * A's M13CA-F2-N1).
+ */
+function pressedOnce(onKeyDown: ((event: KeyboardEvent<HTMLDivElement>) => void) | undefined) {
+  return (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Enter" || event.key === " ") {
+      if (event.repeat) {
+        event.preventDefault();
+      } else {
+        swallowHeldKeys();
+      }
+    }
+    onKeyDown?.(event);
+  };
+}
+
 type ItemProps = ComponentProps<typeof Primitive.Item> & {
   /** destructive: the item deletes, in red. */
   tone?: "destructive";
 };
 
-export function DropdownMenuItem({ className, tone, ...props }: ItemProps) {
+export function DropdownMenuItem({ className, tone, onKeyDown, ...props }: ItemProps) {
   return (
     <Primitive.Item
       className={cn(
@@ -44,14 +68,20 @@ export function DropdownMenuItem({ className, tone, ...props }: ItemProps) {
         tone === "destructive" && "text-destructive focus:text-destructive [&>svg]:text-destructive",
         className
       )}
+      onKeyDown={pressedOnce(onKeyDown)}
       {...props}
     />
   );
 }
 
-export function DropdownMenuRadioItem({ className, children, ...props }: ComponentProps<typeof Primitive.RadioItem>) {
+export function DropdownMenuRadioItem({
+  className,
+  children,
+  onKeyDown,
+  ...props
+}: ComponentProps<typeof Primitive.RadioItem>) {
   return (
-    <Primitive.RadioItem className={cn(item, "pr-2.5 pl-8", className)} {...props}>
+    <Primitive.RadioItem className={cn(item, "pr-2.5 pl-8", className)} onKeyDown={pressedOnce(onKeyDown)} {...props}>
       <span className="absolute left-2 flex size-3.5 items-center justify-center">
         <Primitive.ItemIndicator>
           <Check className="size-3.5" />

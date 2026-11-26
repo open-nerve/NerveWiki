@@ -1,8 +1,8 @@
-import { File, ScrollText } from "lucide-react";
 import { Fragment, type Ref } from "react";
 import { Link } from "react-router";
 
 import { factsClass, lineLinkClass, lineTitleClass, stackedLinesClass } from "../../app/page-classes";
+import { PageIcon } from "../../components/page-icon";
 import { formatBytes, formatDateTime, formatRelative } from "../../i18n/format";
 import { useT } from "../../i18n/i18n";
 import { isolate, Isolated, same, type Namer } from "../../i18n/isolated";
@@ -89,11 +89,9 @@ export function SearchHitRow({
       {/* Its icon by the first line of a name that wraps (review B's P5S2B-M1). */}
       <p className={lineTitleClass}>
         {node.kind === "page" ? (
-          <ScrollText aria-hidden className="mt-0.5 size-4 shrink-0 self-start text-faint" />
-        ) : attachment === null ? (
-          <File aria-hidden className="mt-0.5 size-4 shrink-0 self-start text-faint" />
+          <PageIcon className="mt-0.5 self-start text-faint" />
         ) : (
-          <AssetIcon mime={attachment.mime} className="mt-0.5 self-start" />
+          <AssetIcon mime={attachment?.mime} className="mt-0.5 self-start" />
         )}
         <Link ref={linkRef} to={open.to} state={open.state} aria-label={label} className={lineLinkClass}>
           <bdi>

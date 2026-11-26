@@ -613,6 +613,14 @@ test("Show unchanged lines is offered where the comparison folds: texts that dif
 
   await user.click(await screen.findByRole("tab", { name: "Compare with the current" }));
   const show = await screen.findByRole("button", { name: "Show unchanged lines" });
+  // A version's comparison has the conflict's buttons, small pills (decision 878; M13 closeout, review B's M13CB-N2).
+  for (const name of ["Previous change", "Next change", "Show unchanged lines"]) {
+    const button = screen.getByRole("button", { name });
+    expect(
+      ["h-7.5", "rounded-full", "px-3.25", "text-compact"].filter((each) => !button.classList.contains(each)),
+      name
+    ).toEqual([]);
+  }
   await user.click(show);
 
   expect(show.getAttribute("aria-pressed")).toBe("true");
