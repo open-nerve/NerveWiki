@@ -3,6 +3,7 @@ import { DropdownMenu as Primitive } from "radix-ui";
 import type { ComponentProps, KeyboardEvent } from "react";
 
 import { cn } from "../../lib/cn";
+import { swallowHeldKeys } from "./dialog";
 
 export const DropdownMenu = Primitive.Root;
 export const DropdownMenuTrigger = Primitive.Trigger;
@@ -34,12 +35,20 @@ const item =
  * pressedOnce has a key held on an item press it once (M13 closeout fix check 1, review B's M13CB-F1-M1). Radix
  * presses an item on keydown, a repeat's too, unless the item's own handler, called first, prevents it: Enter held on
  * a menu's button opened the menu, and its repeats pressed the first item, focused, the tree's New subpage making
- * pages, an attachment's Open opening tabs. A repeat of Enter or Space presses nothing; a new press does.
+ * pages, an attachment's Open opening tabs. A repeat of Enter or Space presses nothing; a new press does. And the
+ * repeats of the press press nothing where the focus goes then, till the key is let go (swallowHeldKeys, decision
+ * 967): in the dialog the item opens they sent Rename's form, pressed Delete's Cancel and, in WebKit, sent Move's; on
+ * the menu's button, the menu closed by a choice, they opened it again (fix check 2, review C's M13CC-F2-M1, review
+ * A's M13CA-F2-N1).
  */
 function pressedOnce(onKeyDown: ((event: KeyboardEvent<HTMLDivElement>) => void) | undefined) {
   return (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.repeat && (event.key === "Enter" || event.key === " ")) {
-      event.preventDefault();
+    if (event.key === "Enter" || event.key === " ") {
+      if (event.repeat) {
+        event.preventDefault();
+      } else {
+        swallowHeldKeys();
+      }
     }
     onKeyDown?.(event);
   };

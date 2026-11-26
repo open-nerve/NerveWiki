@@ -1,7 +1,9 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { expect, test, vi } from "vitest";
 
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -179,3 +181,81 @@ test.each([
     expect(pressed).toHaveBeenCalledTimes(1);
   }
 );
+
+// M13 closeout fix check 2 (review C's M13CC-F2-M1, review A's M13CA-F2-N1): the key held on an item pressed it once,
+// and its repeats fell where the focus went then: in the dialog the item opened, whose form they sent or whose Cancel
+// they pressed, or on the menu's button, the menu closed by a choice, which opened it again. An item pressed by Enter
+// or Space swallows the key's repeats until it is let go, as a dialog closing does (decision 967).
+test.each([
+  ["Enter", "{Enter>4}", "{/Enter}"],
+  ["Space", "[Space>4]", "[/Space]"],
+] as const)("%s held on a choice chooses it once, and the menu stays closed", async (_, held, release) => {
+  const user = userEvent.setup();
+  const chosen = vi.fn();
+  render(
+    <DropdownMenu>
+      <DropdownMenuTrigger>Workspaces</DropdownMenuTrigger>
+      <DropdownMenuContent>
+        <DropdownMenuRadioGroup value="tokyo" onValueChange={chosen}>
+          <DropdownMenuRadioItem value="tokyo">Tokyo</DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="osaka">Osaka</DropdownMenuRadioItem>
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+  const trigger = screen.getByRole("button", { name: "Workspaces" });
+  await user.click(trigger);
+  (await screen.findByRole("menuitemradio", { name: "Osaka" })).focus();
+
+  await user.keyboard(held);
+  await user.keyboard(release);
+  expect(chosen).toHaveBeenCalledTimes(1);
+  expect(chosen).toHaveBeenCalledWith("osaka");
+  expect(screen.queryAllByRole("menu")).toEqual([]);
+  expect(document.activeElement).toBe(trigger);
+});
+
+test("Enter held on an item that opens a dialog opens it once, its repeats pressing nothing in it", async () => {
+  const user = userEvent.setup();
+  const sent = vi.fn();
+  function Renaming() {
+    const [open, setOpen] = useState(false);
+    return (
+      <>
+        <DropdownMenu>
+          <DropdownMenuTrigger>Actions</DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <DropdownMenuItem onSelect={() => setOpen(true)}>Rename</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogContent>
+            <DialogTitle>Rename Notes</DialogTitle>
+            <DialogDescription>A new name.</DialogDescription>
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                sent();
+              }}
+            >
+              <input aria-label="Title" defaultValue="Notes" />
+              <button type="submit">Save</button>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </>
+    );
+  }
+  render(<Renaming />);
+  await user.click(screen.getByRole("button", { name: "Actions" }));
+  (await screen.findByRole("menuitem", { name: "Rename" })).focus();
+
+  // The first press opens the dialog, whose field takes the focus; the repeats fall in it.
+  await user.keyboard("{Enter>4}");
+  expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Title" }));
+  expect(sent).not.toHaveBeenCalled();
+  expect(screen.getByRole("dialog", { name: "Rename Notes" })).toBeTruthy();
+  // Let go, Enter is the form's.
+  await user.keyboard("{/Enter}{Enter}");
+  expect(sent).toHaveBeenCalledTimes(1);
+});

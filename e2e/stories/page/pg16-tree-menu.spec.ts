@@ -1,5 +1,5 @@
 import type { ApiClient, Page as WikiPage } from "@nervewiki/api-client";
-import type { Page, Request } from "@playwright/test";
+import type { Locator, Page, Request } from "@playwright/test";
 
 import { emailFor } from "../../fixtures/auth";
 import { joinOnboarded } from "../../fixtures/invitations";
@@ -153,6 +153,27 @@ test("PG16 (page): a row's menu in the tree opens at its button, by the pointer 
   await page.keyboard.press("Escape");
   await expect(menu).toBeHidden();
   await expect(button).toBeFocused();
+
+  // Enter held on an item that opens a dialog opens it once, and its repeats press nothing in it: they sent Rename's
+  // form, which closed, and in WebKit Move's, a write (M13 closeout fix check 2, review C's M13CC-F2-M1). The menu
+  // opened by the pointer, the item focused; the key's first press, its repeats once the dialog has the focus, let go:
+  // the dialog open still, nothing written.
+  const heldOn = async (item: string, opens: Locator) => {
+    await button.click();
+    await menu.getByRole("menuitem", { name: item, exact: true }).focus();
+    const pressed = await recordHeld(page);
+    await page.keyboard.down("Enter");
+    await expect(opens.locator(":focus")).toHaveCount(1);
+    await repeats(page);
+    await page.keyboard.up("Enter");
+    expect(await pressed(), item).toEqual({ menus: [0, 1], dialogs: [1, 0], rows: 0, writes: [] });
+    await expect(opens).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(opens).toBeHidden();
+    await expect(button).toBeFocused();
+  };
+  await heldOn("Move to…", move);
+  await heldOn("Rename", renameDialog(page, "Notes"));
   await expect(pageHeading(page, "Roadmap")).toBeVisible();
   expect(await treeTitles(page, "Plans")).toEqual(["Roadmap", "Notes"]);
 });
