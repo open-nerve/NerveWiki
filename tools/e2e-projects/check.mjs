@@ -38,6 +38,13 @@ const REQUIRED = [
   // A code block's head, its Copy and the clipboard, and a done task item are each engine's (M13/P4/S2, decision 879).
   ["firefox", "page/pg17-page-head.spec.ts", "PG17 (page): a code block's head"],
   ["webkit", "page/pg17-page-head.spec.ts", "PG17 (page): a code block's head"],
+  // The edit's outline's first jump, its line measured as it is drawn, is each engine's; the trail's separators each on
+  // the line of their step's name: Firefox broke the line after one before its step, and the cell went red there alone
+  // (M13 closeout, review B's M13CB-I1 and M13CB-M2).
+  ["firefox", "page/pg17-page-head.spec.ts", "PG17 (page): edited from the page's top"],
+  ["webkit", "page/pg17-page-head.spec.ts", "PG17 (page): edited from the page's top"],
+  ["firefox", "page/pg17-page-head.spec.ts", "PG17 (page): the trail keeps each separator"],
+  ["webkit", "page/pg17-page-head.spec.ts", "PG17 (page): the trail keeps each separator"],
   // The drawer of a phone's width, its focus and Escape, are each engine's (M13/P2/S3, decision 789).
   ["firefox", "shell/ui1-narrow-drawer.spec.ts", "UI1 (page): at 375 wide the left column is a drawer"],
   ["webkit", "shell/ui1-narrow-drawer.spec.ts", "UI1 (page): at 375 wide the left column is a drawer"],

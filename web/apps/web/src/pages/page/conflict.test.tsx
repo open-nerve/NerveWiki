@@ -175,6 +175,17 @@ test("the unchanged stretches are folded; Show unchanged lines, which the keyboa
 
   const show = within(region).getByRole("button", { name: "Show unchanged lines" });
   expect(show.getAttribute("aria-pressed")).toBe("false");
+  // The panel's buttons are one size and shape, Keep mine's and Discard mine's: small pills (decision 878; M13
+  // closeout, review B's M13CB-N2). jsdom lays nothing out: the classes are held here.
+  const pill = ["h-7.5", "rounded-full", "px-3.25", "text-compact"];
+  for (const name of ["Keep mine", "Discard mine", "Previous change", "Next change", "Show unchanged lines"]) {
+    const button = within(region).getByRole("button", { name });
+    expect(
+      pill.filter((each) => !button.classList.contains(each)),
+      name
+    ).toEqual([]);
+    expect(button.classList.contains("h-9") || button.classList.contains("rounded-lg"), name).toBe(false);
+  }
   await user.click(show);
   expect(show.getAttribute("aria-pressed")).toBe("true");
   await waitFor(() => expect(region.querySelector(".cm-collapsedLines")).toBeNull());

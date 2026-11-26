@@ -1,7 +1,7 @@
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { search, searchKeymap } from "@codemirror/search";
-import { Compartment, EditorState, Prec } from "@codemirror/state";
-import { EditorView, keymap } from "@codemirror/view";
+import { Compartment, EditorState, Prec, type Text } from "@codemirror/state";
+import { EditorView, keymap, type ViewUpdate } from "@codemirror/view";
 import { use, useContext, useId, useImperativeHandle, useLayoutEffect, useRef, type Ref, type RefObject } from "react";
 
 import { useT, type Translate } from "../i18n/i18n";
@@ -72,6 +72,22 @@ type Live = Pick<SourceEditorProps, "context" | "controls" | "onChange" | "outli
 /** How long a composition's end waits for its text, which some browsers give after it. */
 const compositionSettles = 50;
 
+/** Where a jump puts its line: at the window's top, 16px below it (decision 876). */
+const jumpTo = (at: number) => EditorView.scrollIntoView(at, { y: "start", yMargin: 16 });
+
+/**
+ * How often, and how long after it, a jump's line is put back at the window's top as what it passed is measured
+ * (EditorHost.reveal): the measuring that moves it is done in a few frames.
+ */
+const realignments = 4;
+const realigning = 1000;
+
+/** What the reader does that ends a jump's realigning: a scroll, a press, a touch, a key. */
+const readerActs = ["wheel", "pointerdown", "touchstart", "keydown"] as const;
+
+/** A jump's line kept at the window's top (EditorHost.reveal): where, in which content, how many more times. */
+type Aligned = { at: number; doc: Text; left: number; end: () => void };
+
 /** The editor's words in the language of the app: its phrases and its content's label. */
 const wording = new Compartment();
 
@@ -100,6 +116,8 @@ class EditorHost {
   private closing: (() => void)[] = [];
   /** The extensions' work going (EditorControls.going). */
   private readonly work = new Set<Promise<void>>();
+  /** The jump whose line is kept at the window's top while what it passed is measured (reveal). */
+  private aligned: Aligned | undefined = undefined;
   private destroyed = false;
 
   constructor(
@@ -168,8 +186,38 @@ class EditorHost {
     }
   }
 
+  /**
+   * reveal puts the cursor at the start of the line at, the line at the window's top, and focuses the editor (decision
+   * 876). The lines a jump passes CodeMirror had estimated, not drawn: drawn and measured as it gets there, they moved
+   * the line off its place, above the window on a first jump down a long page (M13 closeout, review B's M13CB-I1). So
+   * each update of the measuring whose heights changed scrolls to the line once more, in a microtask of its own (no
+   * dispatch in an update), the cursor and the content as they were, a few times at most within a second; the reader's
+   * scroll, press, touch or key ends it.
+   */
+  reveal(at: number): void {
+    this.aligned?.end();
+    this.view.dispatch({ selection: { anchor: at }, effects: jumpTo(at) });
+    this.view.focus();
+    const end = () => {
+      clearTimeout(timer);
+      for (const name of readerActs) {
+        window.removeEventListener(name, end, true);
+      }
+      if (this.aligned === aligned) {
+        this.aligned = undefined;
+      }
+    };
+    const timer = setTimeout(end, realigning);
+    for (const name of readerActs) {
+      window.addEventListener(name, end, { capture: true, passive: true });
+    }
+    const aligned: Aligned = { at, doc: this.view.state.doc, left: realignments, end };
+    this.aligned = aligned;
+  }
+
   destroy(): void {
     this.destroyed = true;
+    this.aligned?.end();
     clearTimeout(this.settling);
     for (const { drop } of this.waiting.splice(0)) {
       drop();
@@ -193,6 +241,25 @@ class EditorHost {
     for (const done of this.closing.splice(0)) {
       done();
     }
+  }
+
+  /** realign scrolls to a jump's line again as the update measured heights that moved it (reveal). */
+  private realign(update: ViewUpdate): void {
+    const aligned = this.aligned;
+    if (aligned === undefined || !update.heightChanged) {
+      return;
+    }
+    const kept = (state: EditorState) => state.doc === aligned.doc && state.selection.main.head === aligned.at;
+    if (!kept(update.state) || aligned.left === 0) {
+      aligned.end();
+      return;
+    }
+    aligned.left -= 1;
+    queueMicrotask(() => {
+      if (this.aligned === aligned && !this.destroyed && kept(this.view.state)) {
+        this.view.dispatch({ effects: jumpTo(aligned.at) });
+      }
+    });
   }
 
   private runWaiting(): void {
@@ -259,6 +326,7 @@ class EditorHost {
         wording.of(this.wordingOf(t)),
         readOnly.of(readOnlyAs(this.locked)),
         EditorView.updateListener.of((update) => {
+          this.realign(update);
           if (update.docChanged) {
             this.changes += 1;
             this.live.current.onChange(this.changes);
@@ -340,19 +408,14 @@ export function SourceEditor({
       working: () => editor.current?.working === true,
       settled: () => editor.current?.settled() ?? Promise.resolve(),
       reveal: (index) => {
-        const view = editor.current?.view;
-        const at = view === undefined ? undefined : where(view, index);
-        if (view === undefined || at === undefined) {
+        const host = editor.current;
+        const at = host === null ? undefined : where(host.view, index);
+        if (host === null || at === undefined) {
           return;
         }
         // The line's start: what is typed at its very start comes before the place mapped, and a heading in a quote or
         // a list item starts after its "> " or "- " (review A's R1-N3).
-        const start = view.state.doc.lineAt(at).from;
-        view.dispatch({
-          selection: { anchor: start },
-          effects: EditorView.scrollIntoView(start, { y: "start", yMargin: 16 }),
-        });
-        view.focus();
+        host.reveal(host.view.state.doc.lineAt(at).from);
       },
     }),
     []

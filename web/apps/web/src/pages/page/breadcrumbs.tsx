@@ -43,7 +43,7 @@ export function Breadcrumbs({
  * the page it is on: the page it leads to is arrived at, its title taking
  * the focus (v0.1 design 13.2, item 17; M5-polish 12.3). Faint and 13px, as the mockup's .crumb: a step lights up
  * as it is hovered, unlined (00-M13 4.7), where the reader is in the secondary text and heavier (M13/P4/S1).
- * className is its nav's.
+ * className is its nav's. Each step's separator ends its link (Separator).
  */
 export function BreadcrumbTrail({
   steps,
@@ -58,16 +58,15 @@ export function BreadcrumbTrail({
   return (
     <nav aria-label={t("page.breadcrumb")} className={className}>
       <ol className="flex flex-wrap items-center gap-x-1 text-compact text-faint [overflow-wrap:anywhere]">
-        {steps.map((step, i) => (
+        {steps.map((step) => (
           <li key={step.key}>
-            {i > 0 && <Separator />}
             <Link to={step.to} state={arrived} className="hover:text-foreground">
               {step.name}
+              <Separator />
             </Link>
           </li>
         ))}
         <li className="font-medium text-muted-foreground">
-          {steps.length > 0 && <Separator />}
           <span aria-current="page">{current}</span>
         </li>
       </ol>
@@ -75,10 +74,15 @@ export function BreadcrumbTrail({
   );
 }
 
-/** Separator stands between two steps, for the eye: screen readers have the list. */
+/**
+ * Separator stands between two steps, for the eye: screen readers have the list, and a link's name is its step's
+ * alone. It ends the step before it, in its link: the line breaks after it, between two steps, a long name broken in
+ * its own; before its step, a sibling of it, Firefox broke the line after it, leaving it alone on a line at any width
+ * (M13 closeout, review B's M13CB-M2, decision 968).
+ */
 function Separator() {
   return (
-    <span aria-hidden className="pr-1 font-normal text-faint">
+    <span aria-hidden className="ps-1 font-normal text-faint">
       /
     </span>
   );

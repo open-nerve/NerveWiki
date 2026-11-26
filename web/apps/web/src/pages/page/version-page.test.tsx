@@ -18,6 +18,7 @@ import { json, notebookJSON, problem, workspaceJSON, type Answer } from "../../t
 import { cn } from "../../lib/cn";
 import { marked } from "../../test/page-editor";
 import { bob, guide, install, pagePath, pageServer, versionJSON } from "../../test/page-server";
+import { readText } from "../../test/read-text";
 import { renderApp } from "../../test/render";
 import { lockNote } from "../../test/lock-note";
 import { docColumnClass, docShellClass, docTitleClass, headCrumbsClass, headRowClass } from "./page-layout";
@@ -65,7 +66,7 @@ test("a version shows where its page is, its revision, when it was written, by w
   expect(
     within(crumbs)
       .getAllByRole("link")
-      .map((link) => [link.textContent, link.getAttribute("href")])
+      .map((link) => [readText(link), link.getAttribute("href")])
   ).toEqual([
     ["Plans", "/lab/notebooks/0199a2b4-0000-7000-8000-0000000000c1"],
     ["Guide", pagePath(guide.id)],

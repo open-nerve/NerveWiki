@@ -22,9 +22,10 @@ import { newOnboardedTeam } from "../../fixtures/workspaces";
 // names broken, the lock's holder's in its note, a version's author's in its line (review B's P4S1B-F1); a code block's
 // head, its language and Copy, a done task item and its blocks, a property's map's chip, a callout's title and its
 // blocks, a list item's (M13/P4/S2, decisions 869, 872, 890, 901–903; the fix checks); the edit's outline's items
-// (M13/P4/S3's review). The page's version only: the cells check the interface's behaviour, writing nothing but their
-// data and one write through the API (for the update in place), the API's and MCP's versions exempt (v0.1 design 13.4,
-// item 3).
+// (M13/P4/S3's review) and its first jump down a long page; the trail's separators each on the line of a name, the
+// right column no stop of Tab (M13 closeout). The page's version only: the cells check the interface's behaviour,
+// writing nothing but their data and one write through the API (for the update in place), the API's and MCP's versions
+// exempt (v0.1 design 13.4, item 3).
 
 /** A value of 97 characters without a break: the properties' strip breaks it in its chip (decision 864). */
 const long = "x".repeat(97);
@@ -429,6 +430,229 @@ test("PG17 (page): long names break, the lock's holder's in its note, a version'
   await fitsAt(path);
   // The version's page: the same note, and the version's author in the line under its title.
   await fitsAt(`${path}/versions/1`, main.getByRole("link", { name: unbroken("admin") }));
+});
+
+/**
+ * A long page's Markdown, as review B's probe had it (M13 closeout, M13CB-I1): frontmatter, a table, lists, tasks,
+ * callouts, code, diagrams, maths, then twelve parts. Its editor opened at the page's top has not drawn the lines from
+ * the tasks on: their heights are its estimates.
+ */
+const guide = [
+  "---",
+  "status: draft",
+  'owner: "[[Hub]]"',
+  "tags: [architecture, backend]",
+  "reviewers:",
+  "  - Ada",
+  "  - Bob",
+  "---",
+  "",
+  "Nerve Wiki is a **Go** program with *PostgreSQL* and a React page, with `inline code`, ==a highlight==, a link to [[Hub]], one to [[Missing page]] not written yet, an [outside link](https://example.com) and a #tagged word.",
+  "",
+  "## Modules",
+  "",
+  "| Module | Duty | Depends |",
+  "|---|---|---|",
+  "| `identity` | Accounts, sessions, tokens | — |",
+  "| `workspace` | Workspaces and members | identity |",
+  "| `page` | Pages, versions, the edit's lock | notebook |",
+  "",
+  "### Lists",
+  "",
+  "- one",
+  "- two",
+  "  - nested",
+  "  - nested again",
+  "- three",
+  "",
+  "1. first",
+  "2. second",
+  "3. third",
+  "",
+  "## Tasks",
+  "",
+  "- [x] Modules talk through ports only",
+  "  - a step under the done one",
+  "- [ ] A cache for the read path (v0.2)",
+  "- [x] A done item whose text is long enough to wrap onto a second line at a phone's width, and then some more",
+  "",
+  "## Callouts",
+  "",
+  "> [!note] A note",
+  "> The note's body, with a [[Hub]] link.",
+  "",
+  "> [!warning] Careful",
+  "> The warning's body.",
+  "",
+  "> [!tip]- Folded tip",
+  "> ## Hidden heading",
+  "> inside",
+  "",
+  "> A plain quote.",
+  "",
+  "## Code",
+  "",
+  "```go",
+  "func (s *Service) Create(ctx context.Context, in CreateInput) (Page, error) {",
+  "\tif err := in.Validate(); err != nil {",
+  "\t\treturn Page{}, err // fail fast",
+  "\t}",
+  "\treturn s.repo.Insert(ctx, in)",
+  "}",
+  "```",
+  "",
+  "```",
+  `a block with no language and a long line ${"0123456789".repeat(14)}`,
+  "```",
+  "",
+  "## Diagram",
+  "",
+  "```mermaid",
+  "flowchart LR",
+  "  A[Browser] --> B[HTTP] --> C[Use case] --> D[(PostgreSQL)]",
+  "```",
+  "",
+  "## Math",
+  "",
+  "$E = mc^2$ inline, and a block:",
+  "",
+  "$$",
+  "\\int_0^1 x^2 \\, dx = \\frac{1}{3}",
+  "$$",
+  "",
+  "---",
+  "",
+  ...Array.from({ length: 12 }, (_, at) => `## Part ${String(at + 1)}\n\n${"Filler text of a part. ".repeat(20)}\n`),
+].join("\n");
+
+/**
+ * settledTop is where the editor's line whose text is text settles in the window: read a frame at a time, the line
+ * found anew each time (CodeMirror draws its lines anew), until its top is the same five frames running. By its place,
+ * not by a time waited; NaN when the line is not drawn.
+ */
+function settledTop(page: Page, text: string): Promise<number> {
+  return page.evaluate(async (wanted) => {
+    let last = Number.NaN;
+    for (let frame = 0, same = 0; frame < 300 && same < 5; frame += 1) {
+      // oxlint-disable-next-line no-await-in-loop -- a frame at a time
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      const line = [...document.querySelectorAll(".cm-content .cm-line")].find((each) => each.textContent === wanted);
+      const at = line === undefined ? Number.NaN : line.getBoundingClientRect().top;
+      same = at === last ? same + 1 : 0;
+      last = at;
+    }
+    return last;
+  }, text);
+}
+
+// The edit's outline's first jump from the page's top, to a heading its editor has not drawn: the lines it passed
+// were CodeMirror's estimates, drawn and measured as it got there, which left the heading's line above the window,
+// the cursor on it unseen (M13 closeout, review B's M13CB-I1). The line settles at the window's top: 16px down
+// (decision 876), within [0, 48] whatever a font makes of it.
+test("PG17 (page): edited from the page's top, the outline's first jump to a heading not drawn yet leaves its line at the window's top", async ({
+  api,
+  signedInPage,
+}, testInfo) => {
+  const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
+  const doc = await createPage(api, pat, notebook.id, "Guide", null, guide);
+  const page = await signedInPage(tokens);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const main = page.getByRole("main");
+  const outline = page
+    .getByRole("complementary", { name: "About this page" })
+    .getByRole("navigation", { name: "Outline" });
+  const jumpTo = async (heading: string) => {
+    await goto(page, wikiPagePath(workspace.slug, notebook.id, doc.id));
+    await expect(pageHeading(page, "Guide")).toBeVisible();
+    await main.getByRole("button", { name: "Edit", exact: true }).click();
+    await outline.getByRole("button", { name: heading, exact: true }).click();
+    const settled = await settledTop(page, `## ${heading}`);
+    expect(settled, `where ## ${heading} settles`).toBeGreaterThanOrEqual(0);
+    expect(settled, `where ## ${heading} settles`).toBeLessThanOrEqual(48);
+    // Left by going to the page anew, not by Done: Done far down a long page makes Firefox warn of a scroll-linked
+    // positioning effect, with this jump or without it, as scrolling did before (M13/P4 design 9, for v0.2).
+  };
+  await jumpTo("Tasks");
+  await jumpTo("Callouts");
+});
+
+/**
+ * separatorsApart lists the trail's separators that are not on the line of their step's name, by their boxes: a "/"
+ * against the name's character next to it in its item (M13 closeout, decision 968). Firefox broke the line after one
+ * that stood before its step, leaving it alone on a line (review B's M13CB-M2).
+ */
+function separatorsApart(page: Page): Promise<string[]> {
+  return page
+    .getByRole("main")
+    .getByRole("navigation", { name: "Breadcrumb", exact: true })
+    .evaluate((nav) => {
+      const apart: string[] = [];
+      for (const separator of nav.querySelectorAll("li [aria-hidden]")) {
+        const item = separator.closest("li");
+        const texts: Text[] = [];
+        const walker = document.createTreeWalker(item ?? nav, NodeFilter.SHOW_TEXT);
+        for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+          if (!separator.contains(node) && (node.textContent ?? "").trim() !== "") {
+            texts.push(node as Text);
+          }
+        }
+        // The name's character next to it: the first of the name after it, or the last of the one before it.
+        const after = texts.find((text) => separator.compareDocumentPosition(text) & Node.DOCUMENT_POSITION_FOLLOWING);
+        const before = texts.findLast(
+          (text) => separator.compareDocumentPosition(text) & Node.DOCUMENT_POSITION_PRECEDING
+        );
+        const name = after ?? before;
+        const glyph = document.createRange();
+        if (name !== undefined) {
+          const at = after === undefined ? name.length - 1 : 0;
+          glyph.setStart(name, at);
+          glyph.setEnd(name, at + 1);
+        }
+        const drawn = [...glyph.getClientRects()].find((rect) => rect.width > 0);
+        const mark = separator.getBoundingClientRect();
+        const middle = mark.top + mark.height / 2;
+        if (drawn === undefined || middle < drawn.top || middle > drawn.bottom) {
+          apart.push(item?.textContent ?? "");
+        }
+      }
+      return apart;
+    });
+}
+
+// The trail's separators each on the line of their step's name, at any width, the page's trail and its version's: a
+// long name broken in it left a "/" alone on a line in Firefox, at every width (review B's M13CB-M2). Each ends its
+// step now, in its link (decision 968).
+test("PG17 (page): the trail keeps each separator on the line of its step's name, the page's and its version's, at 320, 375, 768 and 1440 wide", async ({
+  api,
+  signedInPage,
+}, testInfo) => {
+  const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
+  const parent = await createPage(
+    api,
+    pat,
+    notebook.id,
+    `Supercalifragilistic${"expialidocious".repeat(4)}`,
+    null,
+    "P\n"
+  );
+  const doc = await createPage(api, pat, notebook.id, unbroken("notes"), parent.id, "One\n");
+  await writeContent(api, pat, doc.id, { content: "One\n\nTwo\n", base_revision: doc.revision });
+  const page = await signedInPage(tokens);
+  const path = wikiPagePath(workspace.slug, notebook.id, doc.id);
+  const keptIn = async (shown: string) => {
+    await goto(page, shown);
+    await expect(page.getByRole("main").locator("[aria-current=page]")).toBeVisible();
+    for (const width of [320, 375, 768, 1440]) {
+      // oxlint-disable-next-line no-await-in-loop -- a width at a time
+      await page.setViewportSize({ width, height: 800 });
+      // oxlint-disable-next-line no-await-in-loop -- a width at a time
+      expect(await separatorsApart(page), `${shown} at ${String(width)}`).toEqual([]);
+    }
+  };
+  await keptIn(path);
+  await keptIn(`${path}/versions/1`);
 });
 
 /** A line of Go longer than the page's column (720px): its block scrolls sideways. */
