@@ -578,6 +578,81 @@ test("PG17 (page): edited from the page's top, the outline's first jump to a hea
 });
 
 /**
+ * A long page of prose, as review B's probe had it (M13 closeout fix check 1, M13CB-F1-N1): forty sections, each a
+ * paragraph that wraps over several lines, a Chinese one every third, and a list. Its editor opened at the page's top
+ * has estimated the heights of the lines it has not drawn; drawn as a scroll shows them, they change.
+ */
+const prose = Array.from({ length: 40 }, (_, at) => {
+  const n = String(at + 1);
+  const en =
+    `A paragraph of section ${n} that runs long enough to wrap over several lines at any width, in a proportional face, with words of uneven lengths like interoperability, a, of, configuration and so on. `.repeat(
+      3
+    );
+  const zh = "这是一段用来让编辑器估计行高的中文段落，没有换行地一直写下去，行宽不同时折成的行数也不同。".repeat(4);
+  return `## Section ${n}\n\n${en}\n\n${(at + 1) % 3 === 0 ? `${zh}\n\n` : ""}- an item ${n}\n- another item, longer, ${"word ".repeat(30)}\n`;
+}).join("\n");
+
+// The outline's jump puts its line back at the window's top for a second, as the lines it passed are measured
+// (M13CB-I1). A scroll of the window meanwhile that came with no wheel, press, touch or key, a script's here, as the
+// browser's find or a screen reader's come, ended nothing: Firefox brought the window back to the line from it, the
+// lines it showed measured (M13 closeout fix check 1, review B's M13CB-F1-N1). Once the line has been at its place, a
+// scroll that is not the editor's ends the realigning, and the window stays where it went. The window is read a frame
+// at a time past the second.
+test("PG17 (page): a scroll of the window after the outline's jump that is not the reader's wheel, press, touch or key stays where it went", async ({
+  api,
+  signedInPage,
+}, testInfo) => {
+  const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
+  const doc = await createPage(api, pat, notebook.id, "Prose", null, prose);
+  const page = await signedInPage(tokens);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const main = page.getByRole("main");
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, doc.id));
+  await expect(pageHeading(page, "Prose")).toBeVisible();
+  await main.getByRole("button", { name: "Edit", exact: true }).click();
+  await page
+    .getByRole("complementary", { name: "About this page" })
+    .getByRole("navigation", { name: "Outline" })
+    .getByRole("button", { name: "Section 15", exact: true })
+    .click();
+  const { placed, went, seen } = await page.evaluate(async () => {
+    // oxlint-disable-next-line unicorn/consistent-function-scoping -- serialized into the page: it stays in the body
+    const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+    // oxlint-disable-next-line unicorn/consistent-function-scoping -- serialized into the page: it stays in the body
+    const lineTop = () =>
+      [...document.querySelectorAll(".cm-content .cm-line")]
+        .find((line) => line.textContent === "## Section 15")
+        ?.getBoundingClientRect().top ?? Number.NaN;
+    // At its place, and six frames more, as the probe scrolled 100ms after the jump.
+    for (let at = 0; at < 300 && !(lineTop() >= 0 && lineTop() <= 48); at += 1) {
+      // oxlint-disable-next-line no-await-in-loop -- a frame at a time
+      await frame();
+    }
+    for (let at = 0; at < 6; at += 1) {
+      // oxlint-disable-next-line no-await-in-loop -- a frame at a time
+      await frame();
+    }
+    const where = { placed: window.scrollY, went: Number.NaN, seen: [] as number[] };
+    window.scrollBy(0, 500);
+    where.went = window.scrollY;
+    const start = performance.now();
+    while (performance.now() - start < 1200) {
+      // oxlint-disable-next-line no-await-in-loop -- a frame at a time
+      await frame();
+      where.seen.push(window.scrollY);
+    }
+    return where;
+  });
+  expect(went - placed, "the scroll").toBe(500);
+  // Not back near the line: what the editor's own measuring moves the window by is a few pixels.
+  expect(
+    seen.filter((y) => Math.abs(y - went) > 100),
+    `the window from ${String(went)}`
+  ).toEqual([]);
+});
+
+/**
  * separatorsApart lists the trail's separators that are not on the line of their step's name, by their boxes: a "/"
  * against the name's character next to it in its item (M13 closeout, decision 968). Firefox broke the line after one
  * that stood before its step, leaving it alone on a line (review B's M13CB-M2). With widths, the trail's list is made

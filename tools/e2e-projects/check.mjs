@@ -48,6 +48,10 @@ const REQUIRED = [
   ["webkit", "page/pg17-page-head.spec.ts", "PG17 (page): edited from the page's top"],
   ["firefox", "page/pg17-page-head.spec.ts", "PG17 (page): the trail keeps each separator"],
   ["webkit", "page/pg17-page-head.spec.ts", "PG17 (page): the trail keeps each separator"],
+  // A scroll that is not the reader's after the outline's jump: Firefox brought the window back from it, and the cell
+  // went red there alone (M13 closeout fix check 1, review B's M13CB-F1-N1).
+  ["firefox", "page/pg17-page-head.spec.ts", "PG17 (page): a scroll of the window after the outline's jump"],
+  ["webkit", "page/pg17-page-head.spec.ts", "PG17 (page): a scroll of the window after the outline's jump"],
   // The drawer of a phone's width, its focus and Escape, are each engine's (M13/P2/S3, decision 789).
   ["firefox", "shell/ui1-narrow-drawer.spec.ts", "UI1 (page): at 375 wide the left column is a drawer"],
   ["webkit", "shell/ui1-narrow-drawer.spec.ts", "UI1 (page): at 375 wide the left column is a drawer"],

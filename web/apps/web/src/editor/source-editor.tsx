@@ -85,8 +85,15 @@ const realigning = 1000;
 /** What the reader does that ends a jump's realigning: a scroll, a press, a touch, a key. */
 const readerActs = ["wheel", "pointerdown", "touchstart", "keydown"] as const;
 
-/** A jump's line kept at the window's top (EditorHost.reveal): where, in which content, how many more times. */
-type Aligned = { at: number; doc: Text; left: number; end: () => void };
+/** How far below the window's top a jump's line is at its place (decision 876's 16px, whatever a font makes of it). */
+const placedWithin = 48;
+
+/**
+ * A jump's line kept at the window's top (EditorHost.reveal): where, in which content, how many more times; whether
+ * it has been at its place yet, and where in the window the editor last left it (its top), as the scrolls it sees
+ * tell its own from another's.
+ */
+type Aligned = { at: number; doc: Text; left: number; end: () => void; placed: boolean; top: number | undefined };
 
 /** The editor's words in the language of the app: its phrases and its content's label. */
 const wording = new Compartment();
@@ -192,7 +199,10 @@ class EditorHost {
    * the line off its place, above the window on a first jump down a long page (M13 closeout, review B's M13CB-I1). So
    * each update of the measuring whose heights changed scrolls to the line once more, in a microtask of its own (no
    * dispatch in an update), the cursor and the content as they were, a few times at most within a second; the reader's
-   * scroll, press, touch or key ends it.
+   * scroll, press, touch or key ends it. So does a scroll that is not the editor's, once the line has been at its
+   * place: a script's, the browser's find's or a screen reader's, which come with none of those. Firefox pulled the
+   * window back to the line from one, the lines it showed measured (M13 closeout fix check 1, review B's M13CB-F1-N1).
+   * The editor's own leave the line at its place or where its last update left it (scrolled).
    */
   reveal(at: number): void {
     this.aligned?.end();
@@ -211,7 +221,7 @@ class EditorHost {
     for (const name of readerActs) {
       window.addEventListener(name, end, { capture: true, passive: true });
     }
-    const aligned: Aligned = { at, doc: this.view.state.doc, left: realignments, end };
+    const aligned: Aligned = { at, doc: this.view.state.doc, left: realignments, end, placed: false, top: undefined };
     this.aligned = aligned;
   }
 
@@ -243,13 +253,52 @@ class EditorHost {
     }
   }
 
-  /** realign scrolls to a jump's line again as the update measured heights that moved it (reveal). */
+  /**
+   * scrolled ends a jump's realigning as a scroll that is not the editor's moved its line, once the line has been at
+   * its place (reveal). It is the editor's own scroll observer, which it calls before it measures what a scroll shows,
+   * and realigns: for a scroll's event, and for what it sees come into view, which in Firefox comes first. The line
+   * where the editor's last update left it, or at its place, the scroll is the editor's.
+   */
+  private scrolled(): void {
+    const aligned = this.aligned;
+    if (aligned === undefined) {
+      return;
+    }
+    if (this.view.state.doc !== aligned.doc) {
+      aligned.end();
+      return;
+    }
+    const top = this.topOf(aligned.at);
+    if (top >= 0 && top <= placedWithin) {
+      aligned.placed = true;
+    } else if (aligned.placed && (aligned.top === undefined || Math.abs(top - aligned.top) > 1)) {
+      aligned.end();
+      return;
+    }
+    aligned.top = top;
+  }
+
+  /** topOf is where the line at is in the window, by the editor's heights: its top's distance below the window's top. */
+  private topOf(at: number): number {
+    return this.view.lineBlockAt(at).top + this.view.documentTop;
+  }
+
+  /**
+   * realign scrolls to a jump's line again as the update measured heights that moved it (reveal); each update, where
+   * the editor left the line, which its scrolls that follow keep.
+   */
   private realign(update: ViewUpdate): void {
     const aligned = this.aligned;
-    if (aligned === undefined || !update.heightChanged) {
+    if (aligned === undefined) {
       return;
     }
     const kept = (state: EditorState) => state.doc === aligned.doc && state.selection.main.head === aligned.at;
+    if (kept(update.state)) {
+      aligned.top = this.topOf(aligned.at);
+    }
+    if (!update.heightChanged) {
+      return;
+    }
     if (!kept(update.state) || aligned.left === 0) {
       aligned.end();
       return;
@@ -341,6 +390,7 @@ class EditorHost {
             clearTimeout(this.settling);
             this.settling = setTimeout(() => this.runWaiting(), compositionSettles);
           },
+          scroll: () => this.scrolled(),
         }),
         composed.extension,
       ],
