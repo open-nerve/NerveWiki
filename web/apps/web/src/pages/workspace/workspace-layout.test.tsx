@@ -148,6 +148,17 @@ test("the switcher's name and its menu's names have their whole as a title; its 
   await user.click(switcher);
   const items = await screen.findAllByRole("menuitemradio");
   expect(items.map((item) => within(item).getByText(/^Acme/).getAttribute("title"))).toEqual([tokyo.name, osaka.name]);
+  // In the menu a name has two lines at most, its item as high as they are; the button's one (M13 closeout fix check
+  // 2, review A's M13CA-F2-N2: at 320px the two names read the same, cut short where they differ). jsdom lays out
+  // nothing: the classes are held here.
+  for (const item of items) {
+    const name = within(item).getByText(/^Acme/);
+    expect([...name.classList]).toEqual(expect.arrayContaining(["line-clamp-2", "[overflow-wrap:anywhere]"]));
+    expect(name.classList.contains("truncate")).toBe(false);
+    expect([...item.classList]).toEqual(expect.arrayContaining(["h-auto", "min-h-8"]));
+    expect(item.classList.contains("h-8")).toBe(false);
+  }
+  expect(within(switcher).getByText(tokyo.name).classList.contains("truncate")).toBe(true);
   const menu = screen.getByRole("menu");
   expect([...menu.classList]).toEqual(
     expect.arrayContaining([

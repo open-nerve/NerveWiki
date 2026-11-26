@@ -70,8 +70,11 @@ export const WorkspaceSwitcher = observer(function WorkspaceSwitcher({ current }
       >
         <DropdownMenuRadioGroup value={current.slug} onValueChange={(slug) => void navigate(`/${slug}`)}>
           {workspaces.list?.map((workspace) => (
-            <DropdownMenuRadioItem key={workspace.id} value={workspace.slug}>
-              <span title={workspace.name} className="truncate">
+            // Two lines at most, the item as high as they are: cut short on one line, two names that differ at
+            // their end alone read the same at 320px, where no pointer hovers for the title (M13 closeout fix check 2,
+            // review A's M13CA-F2-N2). The button keeps its one line.
+            <DropdownMenuRadioItem key={workspace.id} value={workspace.slug} className="h-auto min-h-8 py-1.5">
+              <span title={workspace.name} className="line-clamp-2 min-w-0 [overflow-wrap:anywhere]">
                 {workspace.name}
               </span>
             </DropdownMenuRadioItem>
