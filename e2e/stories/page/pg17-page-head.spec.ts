@@ -595,24 +595,27 @@ const prose = Array.from({ length: 40 }, (_, at) => {
 /**
  * scrollAfterJump scrolls the window by `by` once the outline's jump has put the line whose text is text at its place,
  * in [0, 48] below the window's top or, a line the window cannot bring so far up, the window at its foot; six frames on,
- * as review B's probe scrolled 100ms after the jump. Then it reads the window a frame at a time for 1.2s, past the
- * realigning's second.
+ * as review B's probe scrolled 100ms after the jump. Then it reads the line's top on the screen a frame at a time for
+ * 1.2s, past the realigning's second: NaN in a frame the editor has not drawn it in.
  */
 function scrollAfterJump(
   page: Page,
   text: string,
   by: number
-): Promise<{ placed: number; went: number; seen: number[] }> {
+): Promise<{ inPlace: boolean; placed: number; went: number; placedTop: number; tops: number[] }> {
   return page.evaluate(
     async ([wanted, distance]) => {
       // oxlint-disable-next-line unicorn/consistent-function-scoping -- serialized into the page: it stays in the body
       const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+      const lineTop = () =>
+        [...document.querySelectorAll(".cm-content .cm-line")]
+          .find((each) => each.textContent === wanted)
+          ?.getBoundingClientRect().top ?? Number.NaN;
       const placed = () => {
-        const line = [...document.querySelectorAll(".cm-content .cm-line")].find((each) => each.textContent === wanted);
-        const lineTop = line?.getBoundingClientRect().top ?? Number.NaN;
+        const lineAt = lineTop();
         const root = document.documentElement;
         const foot = window.scrollY + window.innerHeight >= root.scrollHeight - 1;
-        return (lineTop >= 0 && lineTop <= 48) || (foot && lineTop >= 0 && lineTop < window.innerHeight);
+        return (lineAt >= 0 && lineAt <= 48) || (foot && lineAt >= 0 && lineAt < window.innerHeight);
       };
       for (let at = 0; at < 300 && !placed(); at += 1) {
         // oxlint-disable-next-line no-await-in-loop -- a frame at a time
@@ -622,14 +625,20 @@ function scrollAfterJump(
         // oxlint-disable-next-line no-await-in-loop -- a frame at a time
         await frame();
       }
-      const where = { placed: window.scrollY, went: Number.NaN, seen: [] as number[] };
+      const where = {
+        inPlace: placed(),
+        placed: window.scrollY,
+        placedTop: lineTop(),
+        went: Number.NaN,
+        tops: [] as number[],
+      };
       window.scrollBy(0, distance);
       where.went = window.scrollY;
       const start = performance.now();
       while (performance.now() - start < 1200) {
         // oxlint-disable-next-line no-await-in-loop -- a frame at a time
         await frame();
-        where.seen.push(window.scrollY);
+        where.tops.push(lineTop());
       }
       return where;
     },
@@ -638,14 +647,18 @@ function scrollAfterJump(
 }
 
 /**
- * expectStayed expects the window to have stayed where a scroll of `by` took it, each frame within half the scroll of
- * it, not back at the jump's line: the editor's own measuring of the lines the scroll shows moves the window by less,
- * as it keeps them where they are on the screen (166px, scrolled up to lines it had estimated).
+ * expectStayed expects the jump's line to have stayed away from where the jump put it on the screen, each frame by more
+ * than a quarter of the scroll `by`, a frame it is not drawn in away too. A scroll leaves the line about the scroll's
+ * distance off, the editor's measuring of the lines the scroll shows keeping them where they are on the screen: in the
+ * three engines 500px for 500px down, 1886px for 1500px up in Prose and 1301px in Guide; the realigning brought it back
+ * to within 1px. Not the window's scrollY: the measuring changes the page's height, so the realigning brought the window
+ * back to the line 523px to 955px past where the jump had left it, and a scroll up of 600px in Guide that stayed came
+ * within 91px of it (fix check 3, review B's M13CB-F3-N1).
  */
-function expectStayed({ went, seen }: { went: number; seen: number[] }, by: number): void {
+function expectStayed({ placedTop, tops }: { placedTop: number; tops: number[] }, by: number): void {
   expect(
-    seen.filter((y) => Math.abs(y - went) > Math.abs(by) / 2),
-    `the window from ${String(went)}`
+    tops.filter((lineAt) => Math.abs(lineAt - placedTop) <= Math.abs(by) / 4),
+    `the line's top from ${String(placedTop)}`
   ).toEqual([]);
 }
 
@@ -655,7 +668,9 @@ function expectStayed({ went, seen }: { went: number; seen: number[] }, by: numb
 // lines it showed measured (M13 closeout fix check 1, review B's M13CB-F1-N1). Once the line has been at its place, a
 // scroll that is not the editor's ends the realigning, and the window stays where it went. The last section's line the
 // window cannot bring to its top: at the window's foot it is at its place, and a scroll up from there stays too; the
-// three engines brought the window back to the foot (fix check 2, review B's M13CB-F2-N1, review C's M13CC-F2-N1).
+// three engines brought the window back to the foot (fix check 2, review B's M13CB-F2-N1, review C's M13CC-F2-N1). The
+// line's place on the screen tells it, not the window's: back at the foot is past where the jump left the window, the
+// page grown by the lines measured (fix check 3, review B's M13CB-F3-N1).
 test("PG17 (page): a scroll of the window after the outline's jump that is not the reader's wheel, press, touch or key stays where it went", async ({
   api,
   signedInPage,
@@ -679,11 +694,13 @@ test("PG17 (page): a scroll of the window after the outline's jump that is not t
 
   await jumpTo("Section 15");
   const down = await scrollAfterJump(page, "## Section 15", 500);
+  expect(down.inPlace, "the line at its place").toBe(true);
   expect(down.went - down.placed, "the scroll down").toBe(500);
   expectStayed(down, 500);
 
   await jumpTo("Section 40");
   const up = await scrollAfterJump(page, "## Section 40", -1500);
+  expect(up.inPlace, "the line at its place, the window at its foot").toBe(true);
   expect(up.placed - up.went, "the scroll up").toBe(1500);
   expectStayed(up, -1500);
 });
