@@ -140,6 +140,8 @@ export function ChunkNotLoaded({
       <div className="flex gap-2">
         <Button
           variant="outline"
+          size="sm"
+          shape="pill"
           className="aria-disabled:opacity-50"
           aria-disabled={loading || undefined}
           onClick={loading ? undefined : retry}
@@ -147,7 +149,7 @@ export function ChunkNotLoaded({
           {t("status.retry")}
         </Button>
         {reload && (
-          <Button variant="outline" onClick={() => window.location.reload()}>
+          <Button variant="outline" size="sm" shape="pill" onClick={() => window.location.reload()}>
             {t("error.reload")}
           </Button>
         )}

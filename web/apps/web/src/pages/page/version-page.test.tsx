@@ -350,6 +350,15 @@ test("differences whose code could not load say so, a reload helping, and show o
   expect(
     await screen.findByText("The differences could not be shown. Reloading the page usually fixes this.")
   ).toBeTruthy();
+  // Its Try again and Reload are the comparison's other buttons, small pills (decision 878; M13 closeout, review B's
+  // M13CB-F1-N2). jsdom lays nothing out: the classes are held here.
+  for (const name of ["Try again", "Reload"]) {
+    const button = within(screen.getByRole("tabpanel")).getByRole("button", { name });
+    expect(
+      ["h-7.5", "rounded-full", "px-3.25", "text-compact"].filter((each) => !button.classList.contains(each)),
+      name
+    ).toEqual([]);
+  }
   const reload = vi.fn();
   vi.stubGlobal("location", { ...window.location, reload });
   onTestFinished(() => {

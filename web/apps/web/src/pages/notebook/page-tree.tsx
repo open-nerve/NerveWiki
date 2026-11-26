@@ -279,7 +279,10 @@ export const PageTree = observer(function PageTree({ notebook }: { notebook: Not
         data-notebook-row
         data-home={atHome || undefined}
         className={cn(
-          "flex h-7.5 items-stretch rounded-row text-row text-muted-foreground transition-colors duration-150 hover:bg-hover hover:text-foreground [@media(hover:hover)]:not-data-home:group-has-[[data-notebook-new]:hover]/notebook:bg-hover [@media(hover:hover)]:not-data-home:group-has-[[data-notebook-new]:hover]/notebook:text-foreground data-home:bg-active data-home:font-medium data-home:text-foreground forced-colors:data-home:outline forced-colors:data-home:-outline-offset-1",
+          // Forced colours outline it on its home, but while its link has the keyboard's focus, whose ring would cross
+          // the outline at the corners, as the places' rows have it (M13 closeout fix check 1, review A's
+          // M13CA-F1-N2); the cog's ring inside it.
+          "flex h-7.5 items-stretch rounded-row text-row text-muted-foreground transition-colors duration-150 hover:bg-hover hover:text-foreground [@media(hover:hover)]:not-data-home:group-has-[[data-notebook-new]:hover]/notebook:bg-hover [@media(hover:hover)]:not-data-home:group-has-[[data-notebook-new]:hover]/notebook:text-foreground data-home:bg-active data-home:font-medium data-home:text-foreground forced-colors:data-home:not-has-[h2>a:focus-visible]:outline forced-colors:data-home:not-has-[h2>a:focus-visible]:-outline-offset-1",
           // Room for the cog and New page, or the cog alone.
           writer ? "pr-14" : "pr-8"
         )}

@@ -1,6 +1,6 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 
 import { arrived } from "../../app/arrival";
 import { instanceJSON, json, signedInApp, workspaceJSON } from "../../test/fakes";
@@ -156,6 +156,28 @@ test("the switcher's name and its menu's names have their whole as a title; its 
     ])
   );
   expect(menu.classList.contains("w-(--radix-dropdown-menu-trigger-width)")).toBe(false);
+});
+
+// At 320px the switcher's menu, as wide as the room it had, ran from the window's one edge to the other, over the
+// drawer's shade: 8px off each, as the account's submenu is (M13 closeout fix check 1, review A's M13CA-F1-N1).
+test("the switcher's menu keeps 8px off the window's edges, its room 16px narrower than the window", async () => {
+  const user = userEvent.setup();
+  const tokyo = { ...acme, name: "Acme Engineering Knowledge Base – Tokyo Office" };
+  renderApp("/acme", signedInApp({ "GET /api/v0/workspaces": () => json({ data: [tokyo] }) }));
+  const switcher = await screen.findByRole("button", { name: tokyo.name, description: "Switch workspace" });
+  // jsdom lays out nothing: the window 320px wide, the button where the drawer has it, Radix's own placing reads.
+  const root = document.documentElement;
+  Object.defineProperty(root, "clientWidth", { configurable: true, value: 320 });
+  Object.defineProperty(root, "clientHeight", { configurable: true, value: 640 });
+  onTestFinished(() => {
+    Reflect.deleteProperty(root, "clientWidth");
+    Reflect.deleteProperty(root, "clientHeight");
+  });
+  switcher.getBoundingClientRect = () => DOMRect.fromRect({ x: 8, y: 48, width: 256, height: 36 });
+
+  await user.click(switcher);
+  const placed = (await screen.findByRole("menu")).parentElement;
+  await waitFor(() => expect(placed?.style.getPropertyValue("--radix-popper-available-width")).toBe("304px"));
 });
 
 // The column's middle, which scrolls, is no stop of Tab: Firefox makes an area that scrolls one, nameless (M13

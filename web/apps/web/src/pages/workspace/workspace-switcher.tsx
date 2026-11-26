@@ -63,6 +63,9 @@ export const WorkspaceSwitcher = observer(function WorkspaceSwitcher({ current }
       </span>
       <DropdownMenuContent
         align="start"
+        // 8px off the window's edges, as the account's submenu: at 320px it ran from one to the other, over the drawer's
+        // shade (M13 closeout fix check 1, review A's M13CA-F1-N1).
+        collisionPadding={8}
         className="max-w-[min(20rem,var(--radix-dropdown-menu-content-available-width))] min-w-(--radix-dropdown-menu-trigger-width)"
       >
         <DropdownMenuRadioGroup value={current.slug} onValueChange={(slug) => void navigate(`/${slug}`)}>
