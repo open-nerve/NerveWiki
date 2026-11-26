@@ -36,18 +36,19 @@ test("a page shows where it is, its title, its reading view and its subpages, al
       .getAllByRole("listitem")
       .map((item) => readText(item))
   ).toEqual(["Plans", "Guide", "Install"]);
-  // Each separator ends its step, in its link, after its name, for the eye alone: the line breaks after it, never
-  // leaving it alone on a line (M13 closeout, decision 968; review B's M13CB-M2).
+  // Each separator ends its step, in its link, glued to its name's last character, for the eye alone: the line breaks
+  // after it, never leaving it alone on a line (M13 closeout, decision 968; review B's M13CB-M2).
   expect(
     [...crumbs.querySelectorAll("[aria-hidden]")].map((separator) => [
       separator.textContent,
-      separator.parentElement?.tagName,
+      separator.parentElement?.className,
       separator.previousSibling?.textContent,
       separator.nextSibling,
+      separator.closest("a")?.textContent,
     ])
   ).toEqual([
-    ["/", "A", "Plans", null],
-    ["/", "A", "Guide", null],
+    ["/", "whitespace-nowrap", "s", null, "Plans/"],
+    ["/", "whitespace-nowrap", "e", null, "Guide/"],
   ]);
   expect(within(crumbs).getByRole("link", { name: "Plans" }).getAttribute("href")).toBe(
     `/lab/notebooks/${notebookJSON.id}`

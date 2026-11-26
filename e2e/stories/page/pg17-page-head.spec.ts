@@ -580,50 +580,71 @@ test("PG17 (page): edited from the page's top, the outline's first jump to a hea
 /**
  * separatorsApart lists the trail's separators that are not on the line of their step's name, by their boxes: a "/"
  * against the name's character next to it in its item (M13 closeout, decision 968). Firefox broke the line after one
- * that stood before its step, leaving it alone on a line (review B's M13CB-M2).
+ * that stood before its step, leaving it alone on a line (review B's M13CB-M2). With widths, the trail's list is made
+ * each of them wide in turn, a pixel apart, then given its own back: a name broken anywhere that fills its line to
+ * within a separator's width put the separator alone on the next line, in the three engines, at widths a font decides.
  */
-function separatorsApart(page: Page): Promise<string[]> {
+function separatorsApart(page: Page, widths: readonly number[] = []): Promise<string[]> {
   return page
     .getByRole("main")
     .getByRole("navigation", { name: "Breadcrumb", exact: true })
-    .evaluate((nav) => {
-      const apart: string[] = [];
-      for (const separator of nav.querySelectorAll("li [aria-hidden]")) {
-        const item = separator.closest("li");
-        const texts: Text[] = [];
-        const walker = document.createTreeWalker(item ?? nav, NodeFilter.SHOW_TEXT);
-        for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
-          if (!separator.contains(node) && (node.textContent ?? "").trim() !== "") {
-            texts.push(node as Text);
+    .evaluate((nav, sweep) => {
+      const list = nav.querySelector("ol");
+      const apartNow = () => {
+        const apart: string[] = [];
+        for (const separator of nav.querySelectorAll("li [aria-hidden]")) {
+          const item = separator.closest("li");
+          const texts: Text[] = [];
+          const walker = document.createTreeWalker(item ?? nav, NodeFilter.SHOW_TEXT);
+          for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+            if (!separator.contains(node) && (node.textContent ?? "").trim() !== "") {
+              texts.push(node as Text);
+            }
+          }
+          // The name's character next to it: the first of the name after it, or the last of the one before it.
+          const after = texts.find(
+            (text) => separator.compareDocumentPosition(text) & Node.DOCUMENT_POSITION_FOLLOWING
+          );
+          const before = texts.findLast(
+            (text) => separator.compareDocumentPosition(text) & Node.DOCUMENT_POSITION_PRECEDING
+          );
+          const name = after ?? before;
+          const glyph = document.createRange();
+          if (name !== undefined) {
+            const at = after === undefined ? name.length - 1 : 0;
+            glyph.setStart(name, at);
+            glyph.setEnd(name, at + 1);
+          }
+          const drawn = [...glyph.getClientRects()].find((rect) => rect.width > 0);
+          const mark = separator.getBoundingClientRect();
+          const middle = mark.top + mark.height / 2;
+          if (drawn === undefined || middle < drawn.top || middle > drawn.bottom) {
+            apart.push(item?.textContent ?? "");
           }
         }
-        // The name's character next to it: the first of the name after it, or the last of the one before it.
-        const after = texts.find((text) => separator.compareDocumentPosition(text) & Node.DOCUMENT_POSITION_FOLLOWING);
-        const before = texts.findLast(
-          (text) => separator.compareDocumentPosition(text) & Node.DOCUMENT_POSITION_PRECEDING
-        );
-        const name = after ?? before;
-        const glyph = document.createRange();
-        if (name !== undefined) {
-          const at = after === undefined ? name.length - 1 : 0;
-          glyph.setStart(name, at);
-          glyph.setEnd(name, at + 1);
-        }
-        const drawn = [...glyph.getClientRects()].find((rect) => rect.width > 0);
-        const mark = separator.getBoundingClientRect();
-        const middle = mark.top + mark.height / 2;
-        if (drawn === undefined || middle < drawn.top || middle > drawn.bottom) {
-          apart.push(item?.textContent ?? "");
-        }
+        return apart;
+      };
+      if (sweep.length === 0 || list === null) {
+        return apartNow();
       }
-      return apart;
-    });
+      const found: string[] = [];
+      for (const width of sweep) {
+        list.style.maxWidth = `${String(width)}px`;
+        found.push(...apartNow().map((item) => `${String(width)}px: ${item}`));
+      }
+      list.style.maxWidth = "";
+      return found;
+    }, widths);
 }
+
+/** Every width of the trail's list from 120 to 1200px, a pixel apart. */
+const trailWidths = Array.from({ length: 1081 }, (_, at) => 120 + at);
 
 // The trail's separators each on the line of their step's name, at any width, the page's trail and its version's: a
 // long name broken in it left a "/" alone on a line in Firefox, at every width (review B's M13CB-M2). Each ends its
-// step now, in its link (decision 968).
-test("PG17 (page): the trail keeps each separator on the line of its step's name, the page's and its version's, at 320, 375, 768 and 1440 wide", async ({
+// step now, in its link, glued to the name's last character (decision 968): the trail is checked at every width of
+// its own too, a pixel apart, which a name filling its line to within a separator's width shows in any engine.
+test("PG17 (page): the trail keeps each separator on the line of its step's name, the page's and its version's, at 320, 375, 768 and 1440 wide and the trail at every width", async ({
   api,
   signedInPage,
 }, testInfo) => {
@@ -650,6 +671,7 @@ test("PG17 (page): the trail keeps each separator on the line of its step's name
       // oxlint-disable-next-line no-await-in-loop -- a width at a time
       expect(await separatorsApart(page), `${shown} at ${String(width)}`).toEqual([]);
     }
+    expect(await separatorsApart(page, trailWidths), `${shown}, its trail 120 to 1200px wide`).toEqual([]);
   };
   await keptIn(path);
   await keptIn(`${path}/versions/1`);

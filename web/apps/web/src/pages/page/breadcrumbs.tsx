@@ -61,8 +61,7 @@ export function BreadcrumbTrail({
         {steps.map((step) => (
           <li key={step.key}>
             <Link to={step.to} state={arrived} className="hover:text-foreground">
-              {step.name}
-              <Separator />
+              <Named name={step.name} />
             </Link>
           </li>
         ))}
@@ -74,11 +73,33 @@ export function BreadcrumbTrail({
   );
 }
 
+/** The characters of a name as the reader sees them: a letter and its marks, an emoji and its joins, are one. */
+const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+
+/**
+ * Named is a step's name, then its separator, glued to the name's last character: a name broken anywhere (one without
+ * a break, [overflow-wrap:anywhere]) that filled its line to within the separator's width had the line broken before
+ * the separator, leaving it alone on the next line, in the three engines at widths a font decides (M13 closeout,
+ * decision 968). The link's name is the step's whole name still.
+ */
+function Named({ name }: { name: string }) {
+  const last = [...graphemes.segment(name)].at(-1)?.segment ?? "";
+  return (
+    <>
+      {name.slice(0, name.length - last.length)}
+      <span className="whitespace-nowrap">
+        {last}
+        <Separator />
+      </span>
+    </>
+  );
+}
+
 /**
  * Separator stands between two steps, for the eye: screen readers have the list, and a link's name is its step's
- * alone. It ends the step before it, in its link: the line breaks after it, between two steps, a long name broken in
- * its own; before its step, a sibling of it, Firefox broke the line after it, leaving it alone on a line at any width
- * (M13 closeout, review B's M13CB-M2, decision 968).
+ * alone. It ends the step before it, in its link, glued to its name (Named): the line breaks after it, between two
+ * steps, a long name broken in its own; before its step, a sibling of it, Firefox broke the line after it, leaving it
+ * alone on a line at any width (M13 closeout, review B's M13CB-M2, decision 968).
  */
 function Separator() {
   return (
