@@ -1,12 +1,13 @@
 import { randomBytes } from "node:crypto";
 
-import type { Route } from "@playwright/test";
+import type { Locator, Route } from "@playwright/test";
 
 import { expectIndexedLinks } from "../../fixtures/assert/links";
 import { failedToLoad } from "../../fixtures/browser";
 import type { Database } from "../../fixtures/db";
 import { expectImported, idsOf, sha256Of, storedImports, treeOf } from "../../fixtures/assert/transfer";
 import { pngBytes, utf8 } from "../../fixtures/assets";
+import { expectButtonsInside, expectFits } from "../../fixtures/narrow";
 import { goto } from "../../fixtures/navigation";
 import { notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook } from "../../fixtures/notebooks";
@@ -90,6 +91,15 @@ async function expectVaultLinks(db: Database, notebookId: string, prefix: string
   await expectIndexedLinks(db, id("Projects/Beta"), [
     { kind: "embed", property: null, target: "spec.pdf", resolved: id("Projects/Alpha/spec.pdf") },
   ]);
+}
+
+/** The center of what locator shows, in the page's viewport: where a pointer pressing it lands. */
+async function centerOf(locator: Locator): Promise<{ x: number; y: number }> {
+  const box = await locator.boundingBox();
+  if (box === null) {
+    throw new Error(`${String(locator)} is not shown`);
+  }
+  return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 }
 
 test("TR2 (API): a vault imports at a notebook's root after its pages and under a page: its pages, folders and attachments, names mended and numbered, links resolved as in the vault", async ({
@@ -249,11 +259,58 @@ test("TR2 (page): a vault imports from the notebook's settings, at its root and 
     await dialog
       .getByLabel("Zip archive")
       .setInputFiles({ name: "again.zip", mimeType: "application/zip", buffer: vault() });
-    await dialog.getByRole("button", { name: "Import", exact: true }).click();
-    await expect(dialog.getByRole("button", { name: "Stop the upload" })).toBeVisible();
+    // 320 wide, while it uploads, Stop the upload and Uploading… inside the dialog, a line each, as one line holds not
+    // both (decision 958, extended to the dialog's own buttons): Stop comes under where Import was, and a double click
+    // on Import starts the upload, its second click on Stop stopping nothing (review A's P5S3A-F1-M1). Each click is
+    // written down as the document takes it (its capture), by its button and its count: where the second fell,
+    // whatever the font or the moment (review A's P5S3A-F2-N1 and P5S3A-F3-M1, C's P5S3C-F2-N2). Past the first 500 ms,
+    // when Stop takes a pointer's click again (decision 960), a press of a count of 2 on it stops nothing either; going
+    // back asks, which it does while the upload goes on. Then the two buttons of what it asks inside its box (decision
+    // 958; review B's P5S3B-I1).
+    const wide = page.viewportSize() ?? { width: 1280, height: 720 };
+    await page.setViewportSize({ width: 320, height: 800 });
+    await page.evaluate(() => {
+      const clicks: [string, number][] = [];
+      Object.assign(window, { tr2Clicks: clicks });
+      document.addEventListener(
+        "click",
+        (event) => {
+          const on = event.target instanceof Element ? event.target.closest("button") : null;
+          clicks.push([on?.textContent ?? (event.target instanceof Node ? event.target.nodeName : "?"), event.detail]);
+        },
+        { capture: true }
+      );
+    });
+    const clicked = () => page.evaluate(() => (window as unknown as { tr2Clicks: [string, number][] }).tr2Clicks);
+    await dialog.getByRole("button", { name: "Import", exact: true }).dblclick();
+    const stop = dialog.getByRole("button", { name: "Stop the upload" });
+    await expect(stop).toBeVisible();
     await expect.poll(() => routed.length).toBe(1);
+    const startedAt = await page.evaluate(() => performance.now());
+    expect(await clicked(), "the double click's clicks").toEqual([
+      ["Import", 1],
+      ["Stop the upload", 2],
+    ]);
+    await expectButtonsInside(dialog);
+    // On the page's own clock, a bound from below: the upload began before startedAt was read.
+    await page.waitForFunction((from) => performance.now() - from > 600, startedAt);
+    const stopCenter = await centerOf(stop);
+    await page.mouse.move(stopCenter.x, stopCenter.y);
+    await page.mouse.down({ clickCount: 2 });
+    await page.mouse.up({ clickCount: 2 });
+    await expect(stop).toBeVisible();
+    expect(await clicked(), "the clicks, the press's last").toEqual([
+      ["Import", 1],
+      ["Stop the upload", 2],
+      ["Stop the upload", 2],
+    ]);
     await page.goBack();
-    await dialog.getByRole("alert").getByRole("button", { name: "Stop and leave" }).click();
+    const asking = dialog.getByRole("alert");
+    await expect(asking.getByRole("button", { name: "Keep uploading" })).toBeVisible();
+    await expectFits(page, dialog, asking);
+    await expectButtonsInside(asking);
+    await page.setViewportSize(wide);
+    await asking.getByRole("button", { name: "Stop and leave" }).click();
     await expect(page).toHaveURL(notebookPath(workspace.slug, notebook.id, "general"));
     await expect(page.getByRole("dialog")).toHaveCount(0);
   } finally {

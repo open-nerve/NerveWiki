@@ -417,7 +417,9 @@ function RevertForm({
         error={problemOf("message")}
         onChange={(event) => setMessage(event.target.value)}
       />
-      <div className="flex justify-end gap-2">
+      {/* A line each, to the right, where one line holds not both: Cancel and Undo in the background at 320
+          (decision 958, extended). */}
+      <div className="flex flex-wrap justify-end gap-2">
         {/* Not disabled while it is out: a disabled button drops the focus (v0.1 design 13.2, item 12). The dialog
             does not close while it is out. */}
         <AlertDialogCancel asChild>

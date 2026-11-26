@@ -8,6 +8,7 @@ import type { Notebook, NotebookRole } from "../../services/notebook.service";
 import { useStore } from "../../stores/context";
 import type { RootStore } from "../../stores/root.store";
 import { notebookJSON, upgradeOf, workspaceJSON } from "../../test/fakes";
+import { healthServer } from "../../test/health-server";
 import { changesetId, created } from "../../test/history-server";
 import { indexServer } from "../../test/index-server";
 import { bob, guide, notes, pagePath, pageServer } from "../../test/page-server";
@@ -242,6 +243,21 @@ const columned: [string, string, Setup, First, Make?][] = [
   ["the directory, read", `${home}/index`, none, { h1: "Directory" }, () => indexServer().server],
   ["a tag's pages, read", `${home}/tags/plan`, tagged, { h1: "#plan" }],
   ["a tag's pages, its tree not read", `${home}/tags/plan`, tagDown, "alert"],
+  // M13/P5/S3: a version's page, each branch of its (version-page.tsx), the health and the upgrade's pages.
+  ["a version's page, read", `${pagePath(guide.id)}/versions/1`, none, { h1: "Version 1" }],
+  ["a version's page, its tree on its way", `${pagePath(guide.id)}/versions/1`, held, "loading"],
+  ["a version's page, its tree not read", `${pagePath(guide.id)}/versions/1`, down, "alert"],
+  [
+    "a version's page, its page not found",
+    `${pagePath("0199a2b4-0000-7000-8000-0000000001ff")}/versions/1`,
+    none,
+    { h1: "Page not found" },
+  ],
+  ["a version's page, its revision no number", `${pagePath(guide.id)}/versions/abc`, none, { h1: "Page not found" }],
+  // Version 99's title first, its alert below it: the version is read in the shell's column.
+  ["a version's page, its version not found", `${pagePath(guide.id)}/versions/99`, none, "alert"],
+  ["the health page, read", `${home}/health`, none, { h1: "Health" }, () => healthServer().server],
+  ["the upgrade's page, read", `${home}/upgrade`, none, { h1: "Upgrade to an LLM Wiki" }],
 ];
 
 /** The banners saying the upgrade: statuses, as the settings' general page says the mode in a row of its own. */
@@ -310,16 +326,24 @@ test("a notebook's settings index has the banner in the settings' column, as its
   );
 });
 
-test("a version's page has the banner where it had it, above the notebook's outlet: not in the page's column", async () => {
+// M13/P5/S3 (decision 935): the banner a card's look, its edge the cards' (no ink's half edge); its state's line first,
+// 500, after an amber dot, drawn by its edge (no fill: amber marks a state), aligned with its first line and not read.
+test("the banner is a card on the second ground, its state's line after an amber dot no one reads", async () => {
   const server = pageServer();
   server.notebook = { ...server.notebook, upgrade: upgradeOf("upgrading", bob.user_id) };
-  renderApp(`${pagePath(guide.id)}/versions/1`, server.app);
+  renderApp(pagePath(guide.id), server.app);
+  await screen.findByRole("article", { name: "Guide" });
 
-  const heading = await screen.findByRole("heading", { level: 1, name: "Version 1" });
-  const banner = bannerOf(said.upgrading);
-  expect(banner).not.toBeNull();
-  expect(banner?.contains(heading)).toBe(false);
-  expect(banner?.parentElement?.contains(heading)).toBe(true);
-  expect(banner?.parentElement).not.toBe(heading.parentElement);
-  expect(banner?.compareDocumentPosition(heading)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  const banner = bannerOf(said.upgrading) as HTMLElement;
+  expect(banner.className).toBe(
+    "mb-6 block space-y-1 rounded-card border border-border bg-surface-2 px-4.5 py-3.5 text-sm"
+  );
+  const line = within(banner).getByText(said.upgrading);
+  expect(line.parentElement).toBe(banner);
+  expect(line.className).toBe("flex items-start gap-2 font-medium");
+  const dot = line.firstElementChild as HTMLElement;
+  expect(dot.getAttribute("aria-hidden")).toBe("true");
+  expect(dot.textContent).toBe("");
+  expect(dot.className).toBe("mt-[calc(0.5lh-3px)] size-1.5 shrink-0 rounded-full border-3 border-accent");
+  expect(line.textContent).toBe(said.upgrading);
 });

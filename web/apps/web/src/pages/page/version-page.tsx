@@ -4,13 +4,17 @@ import { Link, useNavigate, useParams } from "react-router";
 import useSWR, { useSWRConfig } from "swr";
 
 import { arrived, useArrivalFocus } from "../../app/arrival";
+import { ColumnTop } from "../../app/column-top";
 import { useDocumentTitle } from "../../app/document-title";
+import { writesNotebook } from "../../app/effective-role";
+import { docFactsClass, headActionsClass } from "../../app/page-classes";
 import { canEditPageBody } from "../../app/source-permissions";
 import { useMounted } from "../../app/mounted";
 import { NotLoaded } from "../../app/not-loaded";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { formatDateTime } from "../../i18n/format";
 import { useT } from "../../i18n/i18n";
+import { cn } from "../../lib/cn";
 import type { Notebook } from "../../services/notebook.service";
 import type { PageVersionContent, TreeNode } from "../../services/page.service";
 import { usePageTree, useStore } from "../../stores/context";
@@ -19,7 +23,16 @@ import { useWorkspace } from "../workspace/workspace-layout";
 import { Breadcrumbs } from "./breadcrumbs";
 import { Comparison } from "./comparison";
 import { EditLockNote } from "./edit-lock-note";
-import { PageGone, type Restored } from "./page-layout";
+import {
+  docColumnClass,
+  docShellClass,
+  docTitleClass,
+  headCrumbsClass,
+  headRowClass,
+  PageColumn,
+  PageGone,
+  type Restored,
+} from "./page-layout";
 import { Mark, useVersions, versionBy } from "./page-versions";
 import { VersionRestore } from "./version-restore";
 import { useLeftBehind, VersionView } from "./version-view";
@@ -73,15 +86,37 @@ export const VersionPage = observer(function VersionPage() {
       void mutate();
     }
   }, [pages, mutate]);
+  // The upgrade's banner at the top of a column, the tree read or not, the page found or not (decisions 915, 946): its
+  // empty head's row as the version's own, Restore's cell a writer's (decision 951), so that the column moves not as
+  // the version comes. Who writes is known before the tree is: a source page's, which has none, is found once it is
+  // read.
+  const head = writesNotebook(notebook) ? restoreCellClass : undefined;
   if (pages.tree === undefined || !pages.confirmed) {
-    return <NotLoaded error={error === stale ? undefined : error} retry={() => void mutate()} />;
+    return (
+      <PageColumn head={head}>
+        <NotLoaded error={error === stale ? undefined : error} retry={() => void mutate()} />
+      </PageColumn>
+    );
   }
   const page = pages.byId(pageId);
   if (page === undefined || !revisionPattern.test(revision)) {
-    return <PageGone notebook={notebook} page={pageId} />;
+    return (
+      <PageColumn head={head}>
+        <PageGone notebook={notebook} page={pageId} />
+      </PageColumn>
+    );
   }
   return <VersionShell key={page.id} notebook={notebook} page={page} revision={Number(revision)} />;
 });
+
+/**
+ * The cell of the head's row Restore this version is in: a writer's always, of a width of its own and as high as the
+ * button, Restore shown in it or not (decision 929; review A's P5A-M4): the versions read later than the version, or
+ * this version restored as the newest elsewhere, the row keeps its lines, the title its place. Never narrower than
+ * Restore (min-w-fit in headActionsClass's min-w-0's place): a font wider than 10rem's room would leave the button out
+ * of the cell's left, over the trail (the host's, of review A's).
+ */
+const restoreCellClass = cn(headActionsClass, "min-h-7.5 min-w-fit flex-[0_1_10rem]");
 
 /**
  * VersionShell is the version found: where its page is, the version's
@@ -155,77 +190,102 @@ const VersionShell = observer(function VersionShell({
       of: of ?? "",
       again: before !== undefined && before.of === of && before.text === text && !before.again,
     }));
+  // Headed as a page is (decision 929): the trail and Restore this version in the head's row, Restore before the title
+  // as the page's Edit is, its cell a writer's always; then, in a page's column, the title, its facts right under it,
+  // and the rest.
   return (
-    <div className="space-y-6">
-      <div className="space-y-2">
-        <Breadcrumbs notebook={notebook} ancestors={pages.ancestorsOf(page.id)} page={page} href={href} part={title} />
-        <div className="flex items-start justify-between gap-3">
-          <h1 ref={heading} tabIndex={-1} className="text-3xl font-semibold break-words outline-none">
+    <div className={docShellClass}>
+      <div className={headRowClass}>
+        <Breadcrumbs
+          className={headCrumbsClass}
+          notebook={notebook}
+          ancestors={pages.ancestorsOf(page.id)}
+          page={page}
+          href={href}
+          part={title}
+        />
+        {canEditPageBody(pages, page.id) && (
+          <div className={restoreCellClass}>
+            {data !== undefined && newest !== undefined && newest.id !== data.id && (
+              <VersionRestore
+                notebook={notebook}
+                page={page}
+                version={data}
+                said={say}
+                restored={() => {
+                  // Gone to the page, arrived at, unless the user left meanwhile.
+                  if (mounted()) {
+                    void navigate(href(page.id), { state: { ...arrived, restored: data.revision } satisfies Restored });
+                  }
+                }}
+              />
+            )}
+          </div>
+        )}
+      </div>
+      <div className={cn(docColumnClass, "space-y-5")}>
+        <ColumnTop />
+        <div>
+          <h1 ref={heading} tabIndex={-1} className={docTitleClass}>
             {title}
           </h1>
-          {canEditPageBody(pages, page.id) && data !== undefined && newest !== undefined && newest.id !== data.id && (
-            <VersionRestore
-              notebook={notebook}
-              page={page}
-              version={data}
-              said={say}
-              restored={() => {
-                // Gone to the page, arrived at, unless the user left meanwhile.
-                if (mounted()) {
-                  void navigate(href(page.id), { state: { ...arrived, restored: data.revision } satisfies Restored });
-                }
-              }}
-            />
+          {data !== undefined && (
+            <p className={cn(docFactsClass, "flex flex-wrap items-center gap-x-2 gap-y-1")}>
+              <time dateTime={data.updated_at}>{formatDateTime(data.updated_at, preferences.locale)}</time>
+              {/* Its author's name broken anywhere, one with no break the browser takes too (hyphens before digits, in
+                Firefox): the line kept to the page (M13/P4/S1, found with review B's P4S1B-F1). The dot with the name:
+                a no-break space after it, so that the line breaks before the dot, not after it (P4S1B-F2-1). Its link
+                arrives at the changeset (decision 940), a shade darker than the facts (docFactsClass). */}
+              <span className="min-w-0 wrap-anywhere">
+                ·{" "}
+                <Link
+                  to={`${home}/history/${data.changeset.id}`}
+                  state={arrived}
+                  className="underline underline-offset-4"
+                >
+                  {versionBy(data, t)}
+                </Link>
+              </span>
+              {/* Current amber, as the right column marks it (decision 930). */}
+              {newest?.id === data.id && <Mark current>{t("version.current")}</Mark>}
+              {data.editing && <Mark>{t("version.editing")}</Mark>}
+            </p>
           )}
+          <output className="mt-1 block text-compact text-muted-foreground empty:sr-only">
+            {said !== undefined && said.of === of ? said.text + (said.again ? again : "") : ""}
+          </output>
         </div>
-        {data !== undefined && (
-          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
-            <time dateTime={data.updated_at}>{formatDateTime(data.updated_at, preferences.locale)}</time>
-            {/* Its author's name broken anywhere, one with no break the browser takes too (hyphens before digits, in
-              Firefox): the line kept to the page (M13/P4/S1, found with review B's P4S1B-F1). The dot with the name: a
-              no-break space after it, so that the line breaks before the dot, not after it (P4S1B-F2-1). */}
-            <span className="min-w-0 wrap-anywhere">
-              ·{" "}
-              <Link to={`${home}/history/${data.changeset.id}`} className="underline underline-offset-4">
-                {versionBy(data, t)}
-              </Link>
-            </span>
-            {newest?.id === data.id && <Mark>{t("version.current")}</Mark>}
-            {data.editing && <Mark>{t("version.editing")}</Mark>}
-          </p>
-        )}
-        <output className="block text-sm text-muted-foreground empty:sr-only">
-          {said !== undefined && said.of === of ? said.text + (said.again ? again : "") : ""}
-        </output>
-      </div>
-      <EditLockNote notebook={notebook} page={page} released={() => heading.current?.focus()} />
-      {data === undefined ? (
-        <NotLoaded error={version.error} retry={() => void version.mutate()} />
-      ) : (
-        <Tabs value={shown} onValueChange={(value) => setTab(value as Tab)} activationMode="manual">
-          <TabsList aria-label={t("version.views")}>
-            <TabsTrigger value="read">{t("version.read")}</TabsTrigger>
-            {data.base_revision !== null && <TabsTrigger value="previous">{t("version.comparePrevious")}</TabsTrigger>}
-            <TabsTrigger value="current">{t("version.compareCurrent")}</TabsTrigger>
-          </TabsList>
-          <TabsContent value="read" className="pt-4">
-            <VersionView
-              notebook={notebook}
-              page={page.id}
-              revision={data.revision}
-              label={t("version.title", { revision: data.revision })}
-            />
-          </TabsContent>
-          {data.base_revision !== null && (
-            <TabsContent value="previous" className="pt-4">
-              <PreviousDiff notebook={notebook} page={page} version={data} base={data.base_revision} />
+        <EditLockNote notebook={notebook} page={page} released={() => heading.current?.focus()} />
+        {data === undefined ? (
+          <NotLoaded error={version.error} retry={() => void version.mutate()} />
+        ) : (
+          <Tabs value={shown} onValueChange={(value) => setTab(value as Tab)} activationMode="manual">
+            <TabsList aria-label={t("version.views")}>
+              <TabsTrigger value="read">{t("version.read")}</TabsTrigger>
+              {data.base_revision !== null && (
+                <TabsTrigger value="previous">{t("version.comparePrevious")}</TabsTrigger>
+              )}
+              <TabsTrigger value="current">{t("version.compareCurrent")}</TabsTrigger>
+            </TabsList>
+            <TabsContent value="read" className="pt-4">
+              <VersionView
+                notebook={notebook}
+                page={page.id}
+                revision={data.revision}
+                label={t("version.title", { revision: data.revision })}
+              />
             </TabsContent>
-          )}
-          <TabsContent value="current" className="pt-4">
-            <CurrentDiff notebook={notebook} page={page} version={data} />
-          </TabsContent>
-        </Tabs>
-      )}
+            {data.base_revision !== null && (
+              <TabsContent value="previous" className="pt-4">
+                <PreviousDiff notebook={notebook} page={page} version={data} base={data.base_revision} />
+              </TabsContent>
+            )}
+            <TabsContent value="current" className="pt-4">
+              <CurrentDiff notebook={notebook} page={page} version={data} />
+            </TabsContent>
+          </Tabs>
+        )}
+      </div>
     </div>
   );
 });

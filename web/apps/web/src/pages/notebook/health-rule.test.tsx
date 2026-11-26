@@ -5,7 +5,9 @@ import { useState } from "react";
 import type { RouteObject } from "react-router";
 import { afterEach, expect, test, vi } from "vitest";
 
+import { noteClass } from "../../app/page-classes";
 import { routes } from "../../app/routes";
+import { buttonClass } from "../../components/ui/button";
 import { ApiError } from "../../services/api";
 import type { LintPage, LintRule, LintRuleSummary } from "../../services/wiki.service";
 import { usePageTree } from "../../stores/context";
@@ -290,13 +292,51 @@ test("a successful refresh removes old expanded items and retained card errors t
   expect(renewed.getByRole("button", { name: "More" })).toBeTruthy();
 });
 
+/** endsOf is the rule's card's first two children and its last: their tags, and the second's classes. */
+function endsOf(rule: string) {
+  const card = document.getElementById(rule);
+  const [first, second] = card?.children ?? [];
+  return [rule, first?.tagName, second?.tagName, second?.className, card?.lastElementChild?.tagName];
+}
+
+// M13/P5/S3 (review B's P5S3B-M1, N1): what a card tells a screen reader not its last child, so that the margin
+// space-y-2 puts under all but the last child falls under no block one sees: 17px above and below, More there or not
+// (B's f1); its second, after the title, which a screen reader entering the card reads first (review A's
+// P5S3A-F1-N1). Its More a card's small pill, as the versions' More (00-M13 4.3).
+test("a rule's card tells a screen reader after its title and ends with what one sees; its More a small pill", async () => {
+  await opened();
+  const rules = [
+    "wanted",
+    "orphans",
+    "ambiguous",
+    "invalid_frontmatter",
+    "missing_type",
+    "missing_summary",
+    "undigested_sources",
+    "invalid_sources",
+  ];
+  expect(rules.map(endsOf)).toEqual(
+    rules.map((rule) => [
+      rule,
+      "H2",
+      "OUTPUT",
+      "sr-only",
+      ["wanted", "missing_summary"].includes(rule) ? "FIELDSET" : "P",
+    ])
+  );
+  expect(wanted().getByRole("button", { name: "More" }).className).toBe(
+    buttonClass({ variant: "outline", size: "sm", shape: "pill" })
+  );
+});
+
 test("a page mode mismatch locks every More until a fresh matching summary", async () => {
   const user = userEvent.setup();
   const fixture = healthServer();
   fixture.responses.page = () => fixture.pageOf(wantedFacts(6).slice(5), null, "standard");
   await opened(fixture);
   await user.click(wanted().getByRole("button", { name: "More" }));
-  await screen.findByText("The notebook mode has changed. Recheck its health.");
+  // A list's note, as the page's others (M13/P5/S3, decision 932; review C's cxa).
+  expect((await screen.findByText("The notebook mode has changed. Recheck its health.")).className).toBe(noteClass);
   expect(wanted().getAllByRole("listitem")).toHaveLength(5);
   await user.click(wanted().getByRole("button", { name: "More" }));
   expect(fixture.pages).toHaveLength(1);
@@ -648,5 +688,7 @@ test.each([
     const card = within(screen.getByRole("heading", { name: "Orphan pages" }).closest("section") as HTMLElement);
     await waitFor(() => expect(card.getAllByRole("listitem")[1]?.textContent).toBe("Guide.md"));
     expect(card.getAllByRole("listitem")[0]?.textContent).toBe(said);
+    // In the path's line (14px, 500), grey and of the text's weight (M13/P5/S3, decision 925).
+    if (said !== "") expect(card.getByText(said).className).toBe("font-normal text-muted-foreground");
   }
 );

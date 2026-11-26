@@ -177,8 +177,6 @@ export const routes: RouteObject[] = [
                         children: [
                           {
                             index: true,
-                            // The banner at the top of the home's column (M13/P5/S1, decision 915).
-                            handle: { column: true },
                             lazy: async () => {
                               const { NotebookHomePage } = await import("../pages/notebook/notebook-home");
                               return { Component: NotebookHomePage };
@@ -186,8 +184,6 @@ export const routes: RouteObject[] = [
                           },
                           {
                             path: "pages/:pageId",
-                            // The notebook's upgrade banner at the top of the page's column (M13/P4/S1, decision 857).
-                            handle: { column: true },
                             lazy: async () => {
                               const { PageLayout } = await import("../pages/page/page-layout");
                               return { Component: PageLayout };
@@ -202,28 +198,22 @@ export const routes: RouteObject[] = [
                             },
                           },
                           {
-                            // Outside a page's shell, which has the pages of the tree alone (M8 design 4.5); the
-                            // banner at the top of its column (M13/P5/S2, decision 915).
+                            // Outside a page's shell, which has the pages of the tree alone (M8 design 4.5).
                             path: "trash",
-                            handle: { column: true },
                             lazy: async () => {
                               const { TrashPage } = await import("../pages/notebook/trash-page");
                               return { Component: TrashPage };
                             },
                           },
                           {
-                            // The banner at the top of the preview's column, each branch's (M13/P5/S2, decision 915).
                             path: "trash/:nodeId",
-                            handle: { column: true },
                             lazy: async () => {
                               const { TrashPreview } = await import("../pages/notebook/trash-preview");
                               return { Component: TrashPreview };
                             },
                           },
                           {
-                            // The banner at the top of the directory's column (M13/P5/S2, decision 915).
                             path: "index",
-                            handle: { column: true },
                             lazy: async () => {
                               const { IndexPage } = await import("../pages/notebook/index-page");
                               return { Component: IndexPage };
@@ -245,19 +235,15 @@ export const routes: RouteObject[] = [
                             },
                           },
                           {
-                            // The notebook's history, its filters in the query (M8/P3 design 4.2); the banner at the
-                            // top of its column (M13/P5/S2, decision 915).
+                            // The notebook's history, its filters in the query (M8/P3 design 4.2).
                             path: "history",
-                            handle: { column: true },
                             lazy: async () => {
                               const { HistoryPage } = await import("../pages/notebook/history-page");
                               return { Component: HistoryPage };
                             },
                           },
                           {
-                            // The banner at the top of the changeset's column, each branch's (M13/P5/S2, decision 915).
                             path: "history/:changesetId",
-                            handle: { column: true },
                             lazy: async () => {
                               const { ChangesetPage } = await import("../pages/notebook/changeset-page");
                               return { Component: ChangesetPage };
@@ -265,10 +251,8 @@ export const routes: RouteObject[] = [
                           },
                           {
                             // The tag is one segment, its '/' written %2F: a tag the page writes ending with '/'
-                            // keeps it (M6/P6 design 8). The banner at the top of its column (M13/P5/S2, decision
-                            // 915).
+                            // keeps it (M6/P6 design 8).
                             path: "tags/:tag",
-                            handle: { column: true },
                             lazy: async () => {
                               const { TagPage } = await import("../pages/notebook/tag-page");
                               return { Component: TagPage };

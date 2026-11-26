@@ -136,9 +136,11 @@ export const ImportDialog = observer(function ImportDialog({
           <DialogTitle>{t("transfer.importTitleOf", { name: notebook.name })}</DialogTitle>
           <DialogDescription>{t("transfer.importExplain")}</DialogDescription>
           {asking && (
-            <div role="alert" className="space-y-3 rounded-md border px-4 py-3 text-sm">
+            // Its edge alone, no ground: the outlined buttons in it show in the dark (M13/P5/S3, decision 934). Its
+            // buttons a line each, to the right, where one line holds not both (decision 958; review B's P5S3B-I1).
+            <div role="alert" className="space-y-3 rounded-lg border border-border px-4 py-3 text-sm">
               <p>{t("transfer.importStopAsk")}</p>
-              <div className="flex justify-end gap-2">
+              <div className="flex flex-wrap justify-end gap-2">
                 <Button type="button" variant="outline" ref={keepButton} onClick={keep}>
                   {t("transfer.importKeepGoing")}
                 </Button>
@@ -178,6 +180,12 @@ export const ImportDialog = observer(function ImportDialog({
   );
 });
 
+/**
+ * How long after the upload starts Stop the upload takes no pointer's click (decision 960). At 320 its row wraps and
+ * Stop comes under where Import was, and a double tap's second click there has a count of 1 in WebKit and Firefox.
+ */
+const stopTakesNoPointerMs = 500;
+
 type ImportFormProps = {
   notebook: Notebook;
   /** The upload going, which the dialog stops as it closes. */
@@ -215,6 +223,8 @@ const ImportForm = observer(function ImportForm({
   const progress = useRef<((sent: number, total: number) => void) | undefined>(undefined);
   const importButton = useRef<HTMLButtonElement>(null);
   const wasSending = useRef(false);
+  // When the upload started, on performance's clock: Stop the upload takes no pointer's click for a while after.
+  const sentAt = useRef(0);
   // Whether the last press was refused for a write under way (transfer.busy): its banner says what the standing
   // alert would, and answers the press; the standing one waits for the next press (M12/P2/S5, 20.2).
   const [refusedBusy, setRefusedBusy] = useState(false);
@@ -278,6 +288,7 @@ const ImportForm = observer(function ImportForm({
       }
       const stop = new AbortController();
       upload.current = stop;
+      sentAt.current = performance.now();
       onUploading(true);
       try {
         const job = await transfers.startImport(place === root ? null : place, file, {
@@ -308,7 +319,21 @@ const ImportForm = observer(function ImportForm({
   }
 
   return (
-    <form ref={ref} noValidate onSubmit={onSubmit} className="space-y-4">
+    // oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- a held key's repeats on its buttons
+    <form
+      ref={ref}
+      noValidate
+      onSubmit={onSubmit}
+      // Enter or Space held on a button presses it once: the focus goes from Import to Stop the upload as the upload
+      // starts and back as it stops, and a repeat would press the other (review A's P5S3A-F2-N2, P5S3A-F3-N1). A
+      // field's repeats are its own.
+      onKeyDown={(event) => {
+        if (event.repeat && (event.key === "Enter" || event.key === " ") && event.target instanceof HTMLButtonElement) {
+          event.preventDefault();
+        }
+      }}
+      className="space-y-4"
+    >
       {most !== undefined && (
         <p className="text-sm text-muted-foreground">{t("transfer.importMost", { size: formatBytes(most, locale) })}</p>
       )}
@@ -390,9 +415,25 @@ const ImportForm = observer(function ImportForm({
           }}
         />
       )}
-      <div className="flex justify-end gap-2">
+      {/* A line each, to the right, where one line holds not both: Stop the upload and Uploading… at 320 (decision
+          958, extended). */}
+      <div className="flex flex-wrap justify-end gap-2">
         {sending ? (
-          <Button key="stop" ref={stopButton} type="button" variant="outline" onClick={() => upload.current?.abort()}>
+          <Button
+            key="stop"
+            ref={stopButton}
+            type="button"
+            variant="outline"
+            onClick={(event) => {
+              // At 320 its row wraps and this comes under where Import was: the second click of a double one on Import
+              // stops nothing (review A's P5S3A-F1-M1), as Cancel's does, nor a pointer's in the upload's first moments
+              // (decision 960). A key's click has no count (0) and stops it at once.
+              if (event.detail > 1 || (event.detail > 0 && performance.now() - sentAt.current < stopTakesNoPointerMs)) {
+                return;
+              }
+              upload.current?.abort();
+            }}
+          >
             {t("transfer.importStop")}
           </Button>
         ) : (

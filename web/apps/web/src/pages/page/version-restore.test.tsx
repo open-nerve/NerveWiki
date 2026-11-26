@@ -154,7 +154,7 @@ test("the dialog shows what the restore changes of the page as it is now; restor
   expect(restores(server.sent)).toEqual(["RESTORE Install 4 on 6"]);
   expect((await screen.findByRole("article", { name: "Install" })).textContent).toBe("Install\nthree");
   await waitFor(() => expect(within(section("Versions")).getAllByRole("listitem")).toHaveLength(4));
-  expect(within(section("Versions")).getAllByRole("listitem")[0]?.textContent).toMatch(/Ada · RestoreCurrent$/);
+  expect(within(section("Versions")).getAllByRole("listitem")[0]?.textContent).toMatch(/Ada · Restore Current$/);
   expect(server.sent.slice(before)).toEqual(expect.arrayContaining(["GET view Install", "GET versions Install"]));
 });
 

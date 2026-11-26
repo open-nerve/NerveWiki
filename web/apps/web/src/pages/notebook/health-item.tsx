@@ -1,5 +1,6 @@
 import { observer } from "mobx-react-lite";
 
+import { lineLinkClass, lineTitleClass } from "../../app/page-classes";
 import { formatBytes, formatDateTime } from "../../i18n/format";
 import { useT } from "../../i18n/i18n";
 import type { UpgradeReportItem } from "../../services/upgrade.service";
@@ -51,13 +52,14 @@ export const HealthItem = observer(function HealthItem({
           `/${slug}/notebooks/${pages.notebookId}`
         );
   return (
-    <li ref={itemRef} tabIndex={-1} className="min-w-0 space-y-1 py-3 text-sm break-words outline-none">
+    // A list's row (decision 925): its path its first line, 14px and 500, underlined as it is hovered alone.
+    <li ref={itemRef} tabIndex={-1} className="min-w-0 space-y-1 py-2.5 text-sm break-words outline-none">
       {id !== undefined && (
-        <div>
+        <div className={lineTitleClass}>
           {target !== undefined && open !== undefined ? (
             <a
               href={open.to}
-              className="underline underline-offset-4"
+              className={lineLinkClass}
               onClick={(event) => {
                 if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
                 event.preventDefault();
@@ -67,7 +69,7 @@ export const HealthItem = observer(function HealthItem({
               {target.path}
             </a>
           ) : readingTree || !treeFailed ? (
-            <span className="text-muted-foreground">
+            <span className="font-normal text-muted-foreground">
               {t(readingTree ? "status.loading" : "health.nodeUnavailable")}
             </span>
           ) : null}

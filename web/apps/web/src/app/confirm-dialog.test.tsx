@@ -97,6 +97,8 @@ test("the confirm button is destructive unless the dialog's tone is the default 
     await user.click(screen.getByRole("button", { name: "Open" }));
     const button = within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete" });
     expect(button.classList.contains(look), String(tone)).toBe(true);
+    // Its buttons a line each, to the right, where one line holds not both: at 320, English (decision 958, extended).
+    expect(button.parentElement?.className).toBe("flex flex-wrap justify-end gap-2");
     unmount();
   }
 });

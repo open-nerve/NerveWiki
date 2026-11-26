@@ -4,9 +4,12 @@ import { Link } from "react-router";
 import useSWR, { unstable_serialize, useSWRConfig } from "swr";
 
 import { NotLoaded } from "../../app/not-loaded";
+import { noteClass, stackedLinesClass } from "../../app/page-classes";
+import { cardClass } from "../../app/settings-page";
 import { Button } from "../../components/ui/button";
 import { formatDateTime } from "../../i18n/format";
 import { useT, type PlainKey } from "../../i18n/i18n";
+import { cn } from "../../lib/cn";
 import { ApiError } from "../../services/api";
 import type { Notebook } from "../../services/notebook.service";
 import type {
@@ -22,7 +25,10 @@ import { nodeTarget } from "../node-target";
 import { openOf } from "../open-node";
 import { useWorkspace } from "../workspace/workspace-layout";
 import { healthCancelled, healthRequest, healthRetry, type HealthScope } from "./health-request";
-import { clearText, HealthRule, healthRuleOrder, staleText, type HealthCard } from "./health-rule";
+import { clearSummaryClass, clearText, HealthRule, healthRuleOrder, staleText, type HealthCard } from "./health-rule";
+
+/** The title of a section of the upgrade's page, a size below the page's own (M13/P5/S3, decision 932). */
+export const sectionTitleClass = "text-base font-semibold";
 
 /**
  * CheckControl is what one entry to the upgrade's page holds of its checks
@@ -229,17 +235,17 @@ export const UpgradeCheckSection = observer(function UpgradeCheckSection({
   }
   return (
     <section aria-labelledby="upgrade-check-heading" className="min-w-0 space-y-4">
-      <h2 id="upgrade-check-heading" className="text-lg font-semibold">
+      <h2 id="upgrade-check-heading" className={sectionTitleClass}>
         {t("upgrade.check")}
       </h2>
-      <p>{t("upgrade.checkIntro")}</p>
+      <p className={noteClass}>{t("upgrade.checkIntro")}</p>
       <Button variant="outline" aria-busy={checking || undefined} onClick={recheck}>
         {t(read ? "upgrade.checkAgain" : "upgrade.checkRead")}
       </Button>
       <output aria-label={t("upgrade.checkResult")} className="block text-sm">
         {said}
       </output>
-      {moved && <p className="text-sm">{t("upgrade.checkStateChanged")}</p>}
+      {moved && <p className={noteClass}>{t("upgrade.checkStateChanged")}</p>}
       {failed !== undefined && !moved && <NotLoaded error={failed} retry={recheck} />}
       {data !== undefined && (
         <>
@@ -249,7 +255,7 @@ export const UpgradeCheckSection = observer(function UpgradeCheckSection({
           {found.map(card)}
           {clear.length > 0 && (
             <details className="space-y-3">
-              <summary className="cursor-pointer font-medium">{clearText(t, clear.length)}</summary>
+              <summary className={clearSummaryClass}>{clearText(t, clear.length)}</summary>
               {clear.map(card)}
             </details>
           )}
@@ -365,22 +371,22 @@ export const UpgradeReportSection = observer(function UpgradeReportSection({
   }
   return (
     <section aria-labelledby="upgrade-report-heading" className="min-w-0 space-y-4">
-      <h2 id="upgrade-report-heading" className="text-lg font-semibold">
+      <h2 id="upgrade-report-heading" className={sectionTitleClass}>
         {t("upgrade.report")}
       </h2>
       {report === null ? (
-        <p>{t("upgrade.reportPending")}</p>
+        <p className={noteClass}>{t("upgrade.reportPending")}</p>
       ) : (
         <>
-          <p>{t("upgrade.reportPassed", { time: formatDateTime(report.computed_at, locale) })}</p>
-          {view.moved && <p className="text-sm">{t("upgrade.checkStateChanged")}</p>}
+          <p className={noteClass}>{t("upgrade.reportPassed", { time: formatDateTime(report.computed_at, locale) })}</p>
+          {view.moved && <p className={noteClass}>{t("upgrade.checkStateChanged")}</p>}
           <TreeFailure tree={tree} />
           <UpgradeGates gates={report.gates} stalePages={report.stale_pages} pages={pages} tree={tree} />
           <UpgradeCounts counts={report.counts} />
           {found.map(card)}
           {clear.length > 0 && (
             <details className="space-y-3">
-              <summary className="cursor-pointer font-medium">{clearText(t, clear.length)}</summary>
+              <summary className={clearSummaryClass}>{clearText(t, clear.length)}</summary>
               {clear.map(card)}
             </details>
           )}
@@ -435,11 +441,12 @@ const UpgradeGates = observer(function UpgradeGates({
   const { locale } = useStore().preferences;
   const number = new Intl.NumberFormat(locale);
   return (
-    <ul aria-label={t("upgrade.gates")} className="space-y-2 text-sm">
+    // A card's rows, as a list's page has them (decision 932).
+    <ul aria-label={t("upgrade.gates")} className={cn(cardClass, "text-sm")}>
       {gateKeys.map((key) => {
         const gate = gates[key];
         return (
-          <li key={key} className="space-y-1">
+          <li key={key} className={stackedLinesClass}>
             <p className={gate.passed ? undefined : "font-medium text-destructive"}>
               {t(gate.passed ? "upgrade.gatePassed" : "upgrade.gateFailed", { gate: t(gateText[key]) })}
             </p>

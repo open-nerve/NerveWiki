@@ -7,6 +7,7 @@ import { readAgain, section, shownPanel } from "../../test/page-panel";
 import { ada, bob, install, notes, pagePath, pageServer, versionJSON } from "../../test/page-server";
 import { renderApp } from "../../test/render";
 import { lockNote } from "../../test/lock-note";
+import { markClass } from "./page-versions";
 
 // The right column's versions (M8 design 4.3, 4.13).
 
@@ -21,7 +22,8 @@ const now = new Date("2026-10-03T10:00:00Z");
 function listed(): string[][] {
   return [...section("Versions").querySelectorAll(":scope > ul > li")].map((item) => {
     const time = item.querySelector("a time");
-    const marks = [...item.querySelectorAll("span")].map((mark) => mark.textContent ?? "");
+    // The marks after the run's text, not the kind in it (decision 959).
+    const marks = [...item.querySelectorAll(":scope > div > span")].map((mark) => mark.textContent ?? "");
     return [time?.textContent ?? "", time?.getAttribute("title") ?? ""].concat(marks, [
       item.querySelector("p")?.textContent ?? "",
     ]);
@@ -101,13 +103,21 @@ test("in Chinese, the versions say the same", async () => {
     )
   ).toBeTruthy();
   const items = within(screen.getByRole("list", { name: "版本" })).getAllByRole("listitem");
-  expect(items.map((item) => item.textContent)).toEqual(["5分钟前Ada · 撤销当前编辑中", "昨天Bob · 导入"]);
+  expect(items.map((item) => item.textContent)).toEqual(["5分钟前Ada · 撤销 当前 编辑中", "昨天Bob · 导入"]);
 });
 
 /** tags is the tag names of element's children, in order. */
 const tags = (element: Element | undefined) => [...(element?.children ?? [])].map((child) => child.tagName);
+/** writtenBy is the parts of row's who and what: each node's name, text and classes. */
+const writtenBy = (row: Element | undefined) =>
+  [...(row?.querySelector("p")?.childNodes ?? [])].map((part) => [
+    part.nodeName,
+    part.textContent,
+    part instanceof Element ? part.className : "",
+  ]);
 
-// M13/P4/S1 (decisions 863, 868): one row each, the time and who wrote it one run of text, the marks at its end.
+// M13/P4/S1 (decisions 863, 868): one row each, the time and who wrote it one run of text; then its marks, after a
+// space (M13/P5/S3, decision 943): in the same run, the text the row's whole width.
 test("a version's row is its time and who wrote it as one run of text, the name in a bdi, then its marks; the current one marked as current", async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   vi.setSystemTime(now);
@@ -120,23 +130,59 @@ test("a version's row is its time and who wrote it as one run of text, the name 
 
   const list = await within(await shownPanel()).findByRole("list", { name: "Versions" });
   const [newest, older] = within(list).getAllByRole("listitem");
-  expect([tags(newest), tags(older)]).toEqual([["DIV", "DIV"], ["DIV"]]);
-  const [said, marks] = newest?.children ?? [];
-  expect(tags(said)).toEqual(["A", "P"]);
+  expect([tags(newest), tags(older)]).toEqual([["DIV"], ["DIV"]]);
+  const [said] = newest?.children ?? [];
+  expect(tags(said)).toEqual(["A", "P", "SPAN", "SPAN"]);
+  expect(tags(older?.children[0])).toEqual(["A", "P"]);
   expect([said?.querySelector("p bdi")?.textContent, older?.querySelector("p bdi")?.textContent]).toEqual([
     "Ada",
     "Bob",
   ]);
   expect(
-    [...(marks?.children ?? [])].map((mark) => [
-      mark.tagName,
-      mark.textContent,
-      mark.classList.contains("bg-accent-soft"),
-    ])
+    [...(said?.children ?? [])]
+      .slice(2)
+      .map((mark) => [mark.tagName, mark.textContent, mark.classList.contains("bg-accent-soft")])
   ).toEqual([
     ["SPAN", "Current", true],
     ["SPAN", "Editing", false],
   ]);
+  // Each mark after a space, in the run's text: "Ada · Edit Current Editing".
+  expect(said?.textContent).toBe("5 minutes agoAda · Edit Current Editing");
+  // Broken where a long name must be, the row's width its own.
+  expect(said?.className).toBe("min-w-0 flex-1 break-words");
+  // The time and the kind each kept on one line, the name alone broken: in zh-CN's right column no character of either
+  // stands alone on a line (decision 959; review B's P5S3B-N2).
+  expect(said?.querySelector("a")?.className).toBe("whitespace-nowrap text-muted-foreground hover:text-foreground");
+  expect([writtenBy(newest), writtenBy(older)]).toEqual([
+    [
+      ["BDI", "Ada", ""],
+      ["#text", " · ", ""],
+      ["SPAN", "Edit", "whitespace-nowrap"],
+    ],
+    [
+      ["BDI", "Bob", ""],
+      ["#text", " · ", ""],
+      ["SPAN", "Edit", "whitespace-nowrap"],
+    ],
+  ]);
+});
+
+// M13/P5/S3 (decisions 930, 943): the plain mark is round as a badge is; both kinds one piece, their words kept on
+// one line in the right column's run of text (review B's P5B-R1-M2).
+test("a mark is round, its words on one line: the plain one as a badge, the current one amber", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  vi.setSystemTime(now);
+  const server = pageServer();
+  server.withVersions(install.id, [versionJSON(1, null, "Install\n", { at: "2026-10-03T09:55:00Z", editing: true })]);
+  renderApp(pagePath(install.id), server.app);
+
+  const list = await within(await shownPanel()).findByRole("list", { name: "Versions" });
+  const editing = within(list).getByText("Editing");
+  expect(editing.className).toBe(markClass);
+  expect([...editing.classList]).toEqual(expect.arrayContaining(["rounded-full", "whitespace-nowrap"]));
+  expect([...within(list).getByText("Current").classList]).toEqual(
+    expect.arrayContaining(["rounded-full", "bg-accent-soft", "text-accent", "whitespace-nowrap"])
+  );
 });
 
 test("more reads the next page of twenty and adds it, the focus kept on it until the last, which takes it to the first version it adds; read again, or come back to, the list is as many pages, from the first", async () => {

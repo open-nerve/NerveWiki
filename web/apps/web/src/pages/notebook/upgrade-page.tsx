@@ -4,14 +4,18 @@ import { Link, useLocation, useNavigate } from "react-router";
 import useSWR, { SWRConfig, unstable_serialize, useSWRConfig } from "swr";
 
 import { arrived, useArrivalFocus } from "../../app/arrival";
+import { ColumnTop } from "../../app/column-top";
 import { ConfirmDialog } from "../../app/confirm-dialog";
 import { useDocumentTitle } from "../../app/document-title";
 import { useMounted } from "../../app/mounted";
 import { NotLoaded } from "../../app/not-loaded";
+import { listColumnClass } from "../../app/page-classes";
+import { cardClass, pageTitleClass } from "../../app/settings-page";
 import { Button } from "../../components/ui/button";
 import { formatDateTime } from "../../i18n/format";
 import { useT } from "../../i18n/i18n";
 import type { Locale } from "../../i18n/locale";
+import { cn } from "../../lib/cn";
 import { ApiError } from "../../services/api";
 import type { Notebook } from "../../services/notebook.service";
 import type { Upgrade } from "../../services/upgrade.service";
@@ -23,7 +27,13 @@ import { distinctName } from "./distinct-name";
 import { useNotebook } from "./notebook-layout";
 import { TransferJobRow } from "./transfer-job-row";
 import { jobNames } from "./transfer-names";
-import { UpgradeCheckSection, UpgradeReportSection, type CheckControl, type TreeRead } from "./upgrade-check";
+import {
+  sectionTitleClass,
+  UpgradeCheckSection,
+  UpgradeReportSection,
+  type CheckControl,
+  type TreeRead,
+} from "./upgrade-check";
 
 /**
  * UpgradePage is the notebook's upgrade to an LLM Wiki under way (M11/P1
@@ -39,9 +49,12 @@ export const UpgradePage = observer(function UpgradePage() {
   const t = useT();
   const heading = useArrivalFocus<HTMLHeadingElement>();
   useDocumentTitle(t("upgrade.title"), notebook.name);
+  // A list's column (decision 932), a div still: its sections are found by their titles (e2e's upgrade-pages.ts);
+  // the banner at its top.
   return (
-    <div className="max-w-2xl space-y-8">
-      <h1 ref={heading} tabIndex={-1} className="text-2xl font-semibold outline-none">
+    <div className={cn(listColumnClass, "space-y-8")}>
+      <ColumnTop />
+      <h1 ref={heading} tabIndex={-1} className={pageTitleClass}>
         {t("upgrade.title")}
       </h1>
       <UpgradeRead
@@ -592,7 +605,8 @@ const UpgradeRead = observer(function UpgradeRead({
 /**
  * UpgradeState is who started the upgrade and when, the source root it
  * proposes and the pages its start wrote, each leading to its page while
- * the tree has it.
+ * the tree has it. Its text a row's size, the body's colour, as a row of
+ * settings.html (decision 956), as AgentSection's.
  */
 const UpgradeState = observer(function UpgradeState({ notebook, upgrade }: { notebook: Notebook; upgrade: Upgrade }) {
   const t = useT();
@@ -603,7 +617,13 @@ const UpgradeState = observer(function UpgradeState({ notebook, upgrade }: { not
   const pageLink = (id: string) => {
     const name = distinctName(pages.tree, id, t);
     return name === undefined ? undefined : (
-      <Link key={id} to={`/${slug}/notebooks/${notebook.id}/pages/${id}`} className="underline underline-offset-4">
+      // Arrived at, its title taking the focus (decision 940).
+      <Link
+        key={id}
+        to={`/${slug}/notebooks/${notebook.id}/pages/${id}`}
+        state={arrived}
+        className="underline underline-offset-4"
+      >
         {name}
       </Link>
     );
@@ -611,8 +631,8 @@ const UpgradeState = observer(function UpgradeState({ notebook, upgrade }: { not
   const root = pageLink(upgrade.source_root_id);
   const seeded = upgrade.seeded_page_ids.flatMap((id) => pageLink(id) ?? []);
   return (
-    <section className="space-y-2">
-      <h2 className="text-lg font-semibold">{t("upgrade.state")}</h2>
+    <section className="space-y-2 text-sm">
+      <h2 className={sectionTitleClass}>{t("upgrade.state")}</h2>
       <p>
         {t("upgrade.startedBy", {
           name: upgrade.started_by.display_name,
@@ -650,8 +670,8 @@ function AgentSection({ upgrade }: { upgrade: Upgrade }) {
   const { me } = useAccount();
   const t = useT();
   return (
-    <section className="space-y-2">
-      <h2 className="text-lg font-semibold">{t("upgrade.agent")}</h2>
+    <section className="space-y-2 text-sm">
+      <h2 className={sectionTitleClass}>{t("upgrade.agent")}</h2>
       {upgrade.started_by.user_id === me.id ? (
         <>
           <p>{t("upgrade.agentYours")}</p>
@@ -696,7 +716,7 @@ const RollbackSection = observer(function RollbackSection({
   const left = upgrade.rollback_left;
   return (
     <section className="space-y-3">
-      <h2 className="text-lg font-semibold">{t("upgrade.rollback")}</h2>
+      <h2 className={sectionTitleClass}>{t("upgrade.rollback")}</h2>
       {upgrade.rollback_job_id !== null && (
         <RollbackJob
           notebook={notebook}
@@ -762,7 +782,7 @@ const RollbackJob = observer(function RollbackJob({
   }
   const name = jobNames([data], t, preferences.locale, me.id).get(data.id) ?? data.name;
   return (
-    <ul aria-label={t("upgrade.rollbackJob")} className="rounded-md border">
+    <ul aria-label={t("upgrade.rollbackJob")} className={cardClass}>
       <TransferJobRow notebook={notebook} job={data} name={name} reread={() => void mutate()} />
     </ul>
   );

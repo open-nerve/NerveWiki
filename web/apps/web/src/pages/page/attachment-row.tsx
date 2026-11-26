@@ -1,6 +1,7 @@
-import { Ellipsis, File, FileAudio, FileImage, FileText, FileVideo, type LucideIcon } from "lucide-react";
+import { Download, Ellipsis, File, FileAudio, FileImage, FileText, FileVideo, type LucideIcon } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, type Ref } from "react";
 
+import { revealClass } from "../../app/page-classes";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -120,10 +121,11 @@ export function AttachmentRow({
     ? { href: asset.content_url, target: "_blank", rel: "noopener noreferrer" }
     : { href: asset.download_url, download: asset.name };
   return (
+    // A card's row (M13/P5/S3, decision 933), its Actions shown as it is hovered or focused (revealClass).
     // oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- dragged into the editor; Copy embed is the keyboard's way
     <li
       ref={row}
-      className="flex items-center gap-2 px-3 py-2 text-sm"
+      className="group/row flex items-center gap-2.5 px-4 py-2.5 text-sm"
       draggable={link !== null || undefined}
       onDragStart={(event) => {
         if (link !== null) {
@@ -133,7 +135,7 @@ export function AttachmentRow({
       }}
     >
       <AssetIcon mime={asset.mime} />
-      {source && <FileText aria-hidden className="size-4 shrink-0 text-muted-foreground" />}
+      {source && <FileText aria-hidden className="size-4 shrink-0 text-faint" />}
       {/* A link drags itself: a drag from the name is the row's. */}
       <a
         ref={linkRef}
@@ -151,7 +153,9 @@ export function AttachmentRow({
         )}
         {inline && <NewTab />}
       </a>
-      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+      {/* Downloaded, not shown in a tab: marked so, for the eye (M5-polish 16.7's half; decision 933). */}
+      {!inline && <Download aria-hidden className="size-3.5 shrink-0 text-faint" />}
+      <span className="shrink-0 text-compact text-faint tabular-nums">
         {formatBytes(asset.byte_size, preferences.locale)}
       </span>
       <DropdownMenu>
@@ -160,7 +164,7 @@ export function AttachmentRow({
             type="button"
             data-actions-of={asset.id}
             aria-label={t("asset.actions", { name: asset.name })}
-            className="rounded p-1 text-muted-foreground hover:bg-hover"
+            className={cn("rounded-row p-1 text-muted-foreground hover:bg-hover hover:text-foreground", revealClass)}
           >
             <Ellipsis className="size-4" />
           </button>

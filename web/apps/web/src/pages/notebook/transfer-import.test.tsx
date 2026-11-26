@@ -458,7 +458,17 @@ test("the upload tells its progress; the browser asks before the page is left; c
   expect(await screen.findByText("No jobs yet.")).toBeTruthy();
 });
 
+/**
+ * fakePerformance fakes performance's clock alone, which vi.advanceTimersByTime moves on: a pointer's click comes to
+ * Stop the upload past the upload's first 500 ms, when it takes one (decision 960), without a wait.
+ */
+function fakePerformance(): void {
+  vi.useFakeTimers({ toFake: ["performance"] });
+  onTestFinished(() => void vi.useRealTimers());
+}
+
 test("Stop the upload stops it, the dialog kept; leaving the page asks first, and stops it", async () => {
+  fakePerformance();
   const user = userEvent.setup();
   const server = jobsServer({ answers: { [imports]: () => new Promise<Response>(() => undefined) } });
   const { router } = renderApp(transfer, server.app);
@@ -466,7 +476,13 @@ test("Stop the upload stops it, the dialog kept; leaving the page asks first, an
   await user.upload(within(shown).getByLabelText("Zip archive"), vault());
   await user.click(within(shown).getByRole("button", { name: "Import" }));
   await waitFor(() => expect(transfers(server.app).length).toBe(1));
+  // While it uploads, Stop the upload and Uploading… a line each, to the right, where one line holds not both: at 320,
+  // English (decision 958, extended).
+  expect(within(shown).getByRole("button", { name: "Stop the upload" }).parentElement?.className).toBe(
+    "flex flex-wrap justify-end gap-2"
+  );
 
+  vi.advanceTimersByTime(500);
   await user.click(within(shown).getByRole("button", { name: "Stop the upload" }));
   await waitFor(() => expect(transfers(server.app)[0]?.aborted).toBe(true));
   expect(within(shown).queryByRole("alert")).toBeNull();
@@ -477,7 +493,15 @@ test("Stop the upload stops it, the dialog kept; leaving the page asks first, an
   await waitFor(() => expect(transfers(server.app).length).toBe(2));
   const general = `/lab/notebooks/${notebookJSON.id}/settings/general`;
   await router.navigate(general);
-  await user.click(within(await within(shown).findByRole("alert")).getByRole("button", { name: "Keep uploading" }));
+  // What it asks in a box with only an edge: a ground there, the outlined buttons in it would hardly show in the dark
+  // (M13/P5/S3, decision 934; review B's P5B-N4).
+  const asking = await within(shown).findByRole("alert");
+  expect(asking.className).toBe("space-y-3 rounded-lg border border-border px-4 py-3 text-sm");
+  // Its buttons a line each, to the right, where one line holds not both (decision 958; review B's P5S3B-I1).
+  expect(within(asking).getByRole("button", { name: "Keep uploading" }).parentElement?.className).toBe(
+    "flex flex-wrap justify-end gap-2"
+  );
+  await user.click(within(asking).getByRole("button", { name: "Keep uploading" }));
   expect([router.state.location.pathname === general, transfers(server.app)[1]?.aborted]).toEqual([false, false]);
   expect(within(shown).queryByRole("alert")).toBeNull();
 
@@ -489,6 +513,7 @@ test("Stop the upload stops it, the dialog kept; leaving the page asks first, an
 });
 
 test("a double click on Stop the upload stops it, and the dialog stays with the file chosen", async () => {
+  fakePerformance();
   const user = userEvent.setup();
   const server = jobsServer({ answers: { [imports]: () => new Promise<Response>(() => undefined) } });
   renderApp(transfer, server.app);
@@ -498,6 +523,7 @@ test("a double click on Stop the upload stops it, and the dialog stays with the 
   await waitFor(() => expect(transfers(server.app).length).toBe(1));
 
   // The double click's first click stops the upload; its second falls on Cancel, which takes Stop's place.
+  vi.advanceTimersByTime(500);
   fireEvent.click(within(shown).getByRole("button", { name: "Stop the upload" }), { detail: 1 });
   const cancel = await within(shown).findByRole("button", { name: "Cancel" });
   fireEvent.click(cancel, { detail: 2 });
@@ -507,6 +533,101 @@ test("a double click on Stop the upload stops it, and the dialog stays with the 
   expect(transfers(server.app)[0]?.aborted).toBe(true);
   fireEvent.click(cancel, { detail: 1 });
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+});
+
+/** startedUpload opens the dialog, chooses a zip and presses Import once: its upload held, the dialog shown. */
+async function startedUpload(user: ReturnType<typeof userEvent.setup>, server: ReturnType<typeof jobsServer>) {
+  const shown = await open(user);
+  await user.upload(within(shown).getByLabelText("Zip archive"), vault());
+  fireEvent.click(within(shown).getByRole("button", { name: "Import" }), { detail: 1 });
+  await waitFor(() => expect(transfers(server.app).length).toBe(1));
+  return { shown, stop: () => within(shown).getByRole("button", { name: "Stop the upload" }) };
+}
+
+// At 320, English, Stop the upload and Uploading… a line each (decision 958): Stop comes under where Import was, and
+// the second click of a double one on Import falls on it (review A's P5S3A-F1-M1). It stops nothing, the upload
+// 500 ms on too, past decision 960's time: this cell is the count's alone. A click then stops it.
+test("the second click of a double one on Import, falling on Stop the upload, stops nothing, 500 ms on too; a click (detail 1) then does", async () => {
+  fakePerformance();
+  const user = userEvent.setup();
+  const server = jobsServer({ answers: { [imports]: () => new Promise<Response>(() => undefined) } });
+  renderApp(transfer, server.app);
+  const { shown, stop } = await startedUpload(user, server);
+
+  vi.advanceTimersByTime(500);
+  fireEvent.click(stop(), { detail: 2 });
+  expect(transfers(server.app)[0]?.aborted).toBe(false);
+  expect(stop()).toBeTruthy();
+  fireEvent.click(stop(), { detail: 1 });
+  await waitFor(() => expect(transfers(server.app)[0]?.aborted).toBe(true));
+  expect(within(shown).getByRole("button", { name: "Import" }).hasAttribute("disabled")).toBe(false);
+});
+
+// Decision 960: a double tap's second may come as a click of its own (detail 1, WebKit's and Firefox's), on Stop come
+// up under Import; for 500 ms from the upload's start Stop takes no pointer's click, a key's (detail 0) at once. The
+// clock is performance's, faked: this cell is the time's alone, its clicks of one count each. The clock is moved on
+// before the upload, so that the 500 ms count from its start, not from the clock's zero (review C's P5S3C-F3-M1).
+test("Stop the upload takes no click of a pointer in the upload's first 500 ms, one after; a key's at once", async () => {
+  fakePerformance();
+  const user = userEvent.setup();
+  const server = jobsServer({ answers: { [imports]: () => new Promise<Response>(() => undefined) } });
+  renderApp(transfer, server.app);
+  vi.advanceTimersByTime(10_000);
+  const { shown, stop } = await startedUpload(user, server);
+
+  fireEvent.click(stop(), { detail: 1 });
+  vi.advanceTimersByTime(499);
+  fireEvent.click(stop(), { detail: 1 });
+  expect(transfers(server.app)[0]?.aborted).toBe(false);
+  vi.advanceTimersByTime(1);
+  fireEvent.click(stop(), { detail: 1 });
+  await waitFor(() => expect(transfers(server.app)[0]?.aborted).toBe(true));
+
+  // Another upload, stopped by a key's click at once.
+  fireEvent.click(within(shown).getByRole("button", { name: "Import" }), { detail: 1 });
+  await waitFor(() => expect(transfers(server.app).length).toBe(2));
+  fireEvent.click(stop(), { detail: 0 });
+  await waitFor(() => expect(transfers(server.app)[1]?.aborted).toBe(true));
+});
+
+// Enter held on Import: the upload starts and the focus goes to Stop, which its repeats would press (review A's
+// P5S3A-F2-N2). A repeat of Enter or Space presses nothing there; a key pressed anew does.
+test("Enter or Space held on Stop the upload presses nothing with its repeats; pressed anew, it stops the upload", async () => {
+  const user = userEvent.setup();
+  const server = jobsServer({ answers: { [imports]: () => new Promise<Response>(() => undefined) } });
+  renderApp(transfer, server.app);
+  const { stop } = await startedUpload(user, server);
+  await waitFor(() => expect(document.activeElement).toBe(stop()));
+
+  expect(fireEvent.keyDown(stop(), { key: "Enter", repeat: true })).toBe(false);
+  expect(fireEvent.keyDown(stop(), { key: " ", repeat: true })).toBe(false);
+  expect(fireEvent.keyDown(stop(), { key: "Enter" })).toBe(true);
+  expect(transfers(server.app)[0]?.aborted).toBe(false);
+  await user.keyboard("{Enter}");
+  await waitFor(() => expect(transfers(server.app)[0]?.aborted).toBe(true));
+});
+
+// Enter held on Stop the upload: it stops the upload, the focus goes to Import, and its repeats would press Import,
+// the upload begun again (review A's P5S3A-F3-N1). The form takes no repeat of Enter or Space on a button; a field's,
+// the zip's or the place's, it leaves to the field. (The form has no text box.)
+test("Enter or Space held on Import, the upload stopped, starts nothing with its repeats, a field's left to it; pressed anew, Import starts it", async () => {
+  const user = userEvent.setup();
+  const server = jobsServer({ answers: { [imports]: () => new Promise<Response>(() => undefined) } });
+  renderApp(transfer, server.app);
+  const { shown, stop } = await startedUpload(user, server);
+  await waitFor(() => expect(document.activeElement).toBe(stop()));
+  await user.keyboard("{Enter}");
+  await waitFor(() => expect(transfers(server.app)[0]?.aborted).toBe(true));
+  const importButton = within(shown).getByRole("button", { name: "Import" });
+  await waitFor(() => expect(document.activeElement).toBe(importButton));
+
+  expect(fireEvent.keyDown(importButton, { key: "Enter", repeat: true })).toBe(false);
+  expect(fireEvent.keyDown(importButton, { key: " ", repeat: true })).toBe(false);
+  expect(fireEvent.keyDown(within(shown).getByLabelText("Zip archive"), { key: " ", repeat: true })).toBe(true);
+  expect(fireEvent.keyDown(within(shown).getByLabelText("Import under"), { key: " ", repeat: true })).toBe(true);
+  expect(transfers(server.app).length).toBe(1);
+  await user.keyboard("{Enter}");
+  await waitFor(() => expect(transfers(server.app).length).toBe(2));
 });
 
 test("an import's report counts what it skipped, not missing files, and says what was not imported as it was", async () => {
@@ -695,6 +816,7 @@ test.each([
     "stopped",
     held,
     async (user: User, shown: HTMLElement) => {
+      vi.advanceTimersByTime(500);
       await user.click(within(shown).getByRole("button", { name: "Stop the upload" }));
     },
   ],
@@ -707,6 +829,7 @@ test.each([
     },
   ],
 ] as const)("an upload %s reads the jobs again, none under way to be polled", async (how, answer, end) => {
+  fakePerformance();
   const user = userEvent.setup();
   const server = jobsServer({ answers: { [imports]: answer } });
   renderApp(transfer, server.app);

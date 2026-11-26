@@ -2,11 +2,13 @@ import { runInAction } from "mobx";
 import { observer } from "mobx-react-lite";
 import { useRef, type FormEvent, type ReactNode } from "react";
 
+import { cn } from "../../lib/cn";
 import { useFocusLeaving } from "../../lib/focus-leaving";
 import { sourceTitleProblem, type SourceTitleProblem } from "../../lib/source-title";
 import { useForm } from "../../app/form";
 import { writesNotebook } from "../../app/effective-role";
 import { errorText, formErrors, type FieldMessage } from "../../app/problem-messages";
+import { cardClass } from "../../app/settings-page";
 import { FormField } from "../../components/form-field";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
@@ -51,7 +53,8 @@ export const UploadRows = observer(function UploadRows({
     return current !== undefined && writesNotebook(current);
   };
   return (
-    <ul aria-label={t("asset.uploads")} className="divide-y rounded-md border text-sm">
+    // A card's rows, as the attachments' (M13/P5/S3, decision 933; review B's P5B-M11).
+    <ul aria-label={t("asset.uploads")} className={cn(cardClass, "text-sm")}>
       {uploads.map((upload) =>
         upload.target === "source-page" ? (
           <SourceUploadRow
@@ -90,7 +93,7 @@ const UploadRow = observer(function UploadRow({
   const finishing = !failed && (upload.answered || (upload.total > 0 && upload.sent >= upload.total));
   const percent = upload.total > 0 ? Math.floor((upload.sent / upload.total) * 100) : 0;
   return (
-    <li ref={row} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
+    <li ref={row} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5">
       <span className="min-w-0 flex-1 truncate">{upload.name}</span>
       <span className="flex items-center gap-3">
         {failed ? (
@@ -173,7 +176,7 @@ const SourceUploadRow = observer(function SourceUploadRow({
   const fixable = !isRefusal(upload.failure) || upload.failure.refused === "source-title";
   const name = upload.name || upload.file.name;
   return (
-    <li ref={row} className="space-y-3 px-3 py-3">
+    <li ref={row} className="space-y-3 px-4 py-3">
       {fixable ? (
         <SourceTitleForm assets={assets} upload={upload} explain={explain} canRetry={canRetry} />
       ) : (

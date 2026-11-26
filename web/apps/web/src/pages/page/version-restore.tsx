@@ -70,7 +70,10 @@ export function VersionRestore({ notebook, page, version, said, restored }: Vers
       }}
     >
       <AlertDialogTrigger asChild>
-        <Button variant="outline">{t("version.restore")}</Button>
+        {/* A small pill in the head's row, as the page's Edit is (M13/P5/S3, decision 929). */}
+        <Button variant="outline" size="sm" shape="pill">
+          {t("version.restore")}
+        </Button>
       </AlertDialogTrigger>
       <AlertDialogContent
         className="max-h-[calc(100svh-2rem)] overflow-y-auto sm:max-w-3xl"

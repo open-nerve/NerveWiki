@@ -48,7 +48,12 @@ export function AttachmentDrop({
   });
   return (
     <div
-      className={cn("space-y-4 rounded-md", className, drop.over && "ring-2 ring-primary ring-offset-4")}
+      // Amber as the attachments' section's: one colour for the two zones of a page (M13/P5/S3, decision 933).
+      className={cn(
+        "space-y-4 rounded-md",
+        className,
+        drop.over && "ring-2 ring-accent ring-offset-4 ring-offset-background"
+      )}
       {...drop.handlers}
     >
       {folders && <Alert>{t("asset.folders")}</Alert>}

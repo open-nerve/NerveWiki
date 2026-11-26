@@ -5,7 +5,9 @@ import { Outlet } from "react-router";
 import { expect, test } from "vitest";
 
 import { routes } from "../../app/routes";
+import { cardClass } from "../../app/settings-page";
 import { editorExtensions } from "../../editor/registry";
+import { cn } from "../../lib/cn";
 import { useStore } from "../../stores/context";
 import { RootStore } from "../../stores/root.store";
 import { attachments, dropped, picker, rows, transfers } from "../../test/attachments";
@@ -455,6 +457,13 @@ test("source uploads keep their queue and explicit title after the modal closes 
   expect(transfers(server.app)[0]!.aborted).toBe(false);
   const reopened = await openUpload(user);
   expect(within(reopened).getByRole("list", { name: "Uploads" }).querySelectorAll(":scope > li")).toHaveLength(2);
+  // A card's rows, as the attachments' are, the source's a little higher (M13/P5/S3, decision 933).
+  const listed = within(reopened).getByRole("list", { name: "Uploads" });
+  expect(listed.className).toBe(cn(cardClass, "text-sm"));
+  expect([...listed.children].map((row) => [...row.classList].filter((name) => /^p[xy]-/.test(name)))).toEqual([
+    ["px-4", "py-3"],
+    ["px-4", "py-2.5"],
+  ]);
   expect(assets.uploads).toEqual(going);
   await user.click(within(reopened).getByRole("button", { name: "Close" }));
   await act(() => view.router.navigate(pagePath(notes.id)));

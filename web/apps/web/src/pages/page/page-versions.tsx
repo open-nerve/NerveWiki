@@ -48,7 +48,8 @@ export function useVersions(notebook: Notebook, page: string) {
  * going, the focus falls to the first version it adds (load-more.tsx).
  * Each a line as the mockup's .ver (M13/P4/S1, decisions 863, 868): the
  * time, then who wrote it, one run of text wrapping as one, the name in a
- * bdi; the marks at its first line's end, the current one amber.
+ * bdi; the marks after it, in the same run, the current one amber
+ * (M13/P5/S3, decision 943).
  */
 export const PageVersions = observer(function PageVersions({
   notebook,
@@ -107,15 +108,17 @@ export const PageVersions = observer(function PageVersions({
             const current = version.id === newest;
             return (
               <li key={version.id} className="flex items-baseline gap-2">
-                {/* The time and who wrote it one run of text, wrapping as one; the marks at the first line's end (review
-                    B's R2-N2). */}
+                {/* The time and who wrote it one run of text, wrapping as one; the marks after it, in the same run,
+                    each after a space: the text has the row's whole width, no lone "-" on a line of its own
+                    (M13/P5/S3, decision 943; review B's P5B-M5). The time and the kind each on one line, the name
+                    alone broken: no character of either alone on a line in zh-CN (decision 959; B's P5S3B-N2). */}
                 <div className="min-w-0 flex-1 break-words">
                   <Link
                     ref={version.id === more.focusing ? focused : undefined}
                     to={href(version.revision)}
                     state={arrived}
                     aria-label={t("version.linkName", { when, revision: version.revision, time })}
-                    className="text-muted-foreground hover:text-foreground"
+                    className="whitespace-nowrap text-muted-foreground hover:text-foreground"
                   >
                     <time dateTime={version.updated_at} title={time}>
                       {when}
@@ -125,13 +128,19 @@ export const PageVersions = observer(function PageVersions({
                   <p className="inline text-muted-foreground before:mx-1 before:content-['·']">
                     <VersionBy version={version} t={t} />
                   </p>
+                  {current && (
+                    <>
+                      {" "}
+                      <Mark current>{t("version.current")}</Mark>
+                    </>
+                  )}
+                  {version.editing && (
+                    <>
+                      {" "}
+                      <Mark>{t("version.editing")}</Mark>
+                    </>
+                  )}
                 </div>
-                {(current || version.editing) && (
-                  <div className="ms-auto flex shrink-0 items-center gap-1">
-                    {current && <Mark current>{t("version.current")}</Mark>}
-                    {version.editing && <Mark>{t("version.editing")}</Mark>}
-                  </div>
-                )}
               </li>
             );
           })}
@@ -144,17 +153,26 @@ export const PageVersions = observer(function PageVersions({
 });
 
 /**
+ * The plain mark's classes: round, as a badge is (settings-page.tsx's badgeClass; M13/P5/S3, decision 930), its words
+ * one piece: in the right column's run of text a word of Chinese would break between its characters, half a mark on a
+ * line (review B's P5B-R1-M2). The history's Undone link is one (cn(markClass, its hover)).
+ */
+export const markClass =
+  "rounded-full border border-border bg-surface-2 px-1.5 text-[11px] whitespace-nowrap text-muted-foreground";
+
+/**
  * Mark is a version's mark beside its time: current, or editing; current, the right column's current one, amber on
  * its soft ground, round (the mockup's .ver .tag; M13/P4/S1, decision 863), its border transparent but in forced
- * colours, which take its ground away (review B's P4S1B-N2): the history's and version's pages have the plain one.
+ * colours, which take its ground away (review B's P4S1B-N2); the version's page's current one too (decision 930): the
+ * history has the plain one.
  */
 export function Mark({ children, current = false }: { children: string; current?: boolean }) {
   return (
     <span
       className={
         current
-          ? "rounded-full border border-transparent bg-accent-soft px-1.5 text-[11px] text-accent"
-          : "rounded border px-1.5 text-xs text-muted-foreground"
+          ? "rounded-full border border-transparent bg-accent-soft px-1.5 text-[11px] whitespace-nowrap text-accent"
+          : markClass
       }
     >
       {children}
@@ -170,14 +188,16 @@ export function versionBy(version: PageVersion, t: Translate): string {
   return `${version.changeset.created_by.display_name} · ${kindText(version.changeset.kind, t)}`;
 }
 
-/** VersionBy is versionBy written with the name in a bdi (M13/P4/S1, decision 868): the right column's. */
+/**
+ * VersionBy is versionBy written with the name in a bdi (M13/P4/S1, decision 868): the right column's. The kind kept
+ * on one line, after the name (decision 959).
+ */
 function VersionBy({ version, t }: { version: PageVersion; t: Translate }) {
   return (
-    <Isolated
-      {...isolate(
-        (name) => `${name(version.changeset.created_by.display_name)} · ${kindText(version.changeset.kind, t)}`
-      )}
-    />
+    <>
+      <Isolated {...isolate((name) => `${name(version.changeset.created_by.display_name)} · `)} />
+      <span className="whitespace-nowrap">{kindText(version.changeset.kind, t)}</span>
+    </>
   );
 }
 

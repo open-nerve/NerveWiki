@@ -11,8 +11,10 @@ import { FormField } from "../../components/form-field";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../../components/ui/dialog";
+import { fieldClass } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { useT } from "../../i18n/i18n";
+import { cn } from "../../lib/cn";
 import { sourceTitleProblem } from "../../lib/source-title";
 import { ApiError } from "../../services/api";
 import type { Notebook } from "../../services/notebook.service";
@@ -132,9 +134,11 @@ export function SourceAddDialog({
           <DialogTitle>{t(mode === "paste" ? "source.pasteTitle" : "source.filesTitle", { name })}</DialogTitle>
           <DialogDescription>{t(mode === "paste" ? "source.pasteBody" : "source.filesBody")}</DialogDescription>
           {asking && (
-            <div role="alert" className="space-y-3 rounded-md border px-4 py-3 text-sm">
+            // Its edge alone, no ground: the outlined buttons in it show in the dark (M13/P5/S3, decision 934). Its
+            // buttons a line each, to the right, where one line holds not both (decision 958; review B's P5S3B-I1).
+            <div role="alert" className="space-y-3 rounded-lg border border-border px-4 py-3 text-sm">
               <p>{t("source.discardAsk")}</p>
-              <div className="flex justify-end gap-2">
+              <div className="flex flex-wrap justify-end gap-2">
                 <Button type="button" variant="outline" ref={keepButton} onClick={keepEditing}>
                   {t("source.keepEditing")}
                 </Button>
@@ -258,7 +262,8 @@ const PasteSource = observer(function PasteSource({
         autoComplete="off"
         onChange={(event) => setTitle(event.target.value)}
       />
-      <div className="space-y-2">
+      {/* Spaced as a form's field, its look the title's field's (M13/P5/S3, decisions 926, 934). */}
+      <div className="space-y-1.5">
         <Label htmlFor={bodyId}>{t("source.markdown")}</Label>
         <textarea
           id={bodyId}
@@ -267,12 +272,12 @@ const PasteSource = observer(function PasteSource({
           rows={10}
           aria-invalid={bodyProblem !== undefined || undefined}
           aria-describedby={`${bodyId}-note`}
-          className="w-full resize-y rounded-md border bg-transparent px-3 py-2 font-mono text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring aria-invalid:border-destructive"
+          className={cn(fieldClass, "resize-y py-2 font-mono")}
           onChange={(event) => setContent(event.target.value)}
         />
         <p
           id={`${bodyId}-note`}
-          className={bodyProblem === undefined ? "text-sm text-muted-foreground" : "text-sm text-destructive"}
+          className={bodyProblem === undefined ? "text-compact text-muted-foreground" : "text-compact text-destructive"}
         >
           {bodyProblem ?? t("source.newlineHint")}
         </p>
