@@ -1,13 +1,22 @@
-import { act, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useEffect } from "react";
+import { Outlet } from "react-router";
 import { afterEach, expect, test, vi } from "vitest";
 
 import { arrived } from "../../app/arrival";
+import { routes } from "../../app/routes";
 import { eventHandlers } from "../../events/handlers";
+import { useStore } from "../../stores/context";
+import type { RootStore } from "../../stores/root.store";
 import { eventServer, withEvents } from "../../test/event-server";
 import { json, notebookJSON, problem, workspaceJSON } from "../../test/fakes";
-import { guide, install, linux, notes, pageNode, pagePath, pageServer } from "../../test/page-server";
+import { pageEditor } from "../../test/page-editor";
+import { section } from "../../test/page-panel";
+import { bob, guide, install, linux, notes, pageNode, pagePath, pageServer, versionJSON } from "../../test/page-server";
+import { readText } from "../../test/read-text";
 import { renderApp } from "../../test/render";
+import { PageColumn } from "./page-layout";
 
 // A page's shell: where it is, its title, its reading view, its subpages
 // (M4/P5 design 3.5, 3.8).
@@ -25,11 +34,22 @@ test("a page shows where it is, its title, its reading view and its subpages, al
   expect(
     within(crumbs)
       .getAllByRole("listitem")
-      .map((item) =>
-        [...item.querySelectorAll(":scope > :not([aria-hidden])")].map((step) => step.textContent).join("")
-      )
+      .map((item) => readText(item))
   ).toEqual(["Plans", "Guide", "Install"]);
-  expect([...crumbs.querySelectorAll("[aria-hidden]")].map((separator) => separator.textContent)).toEqual(["/", "/"]);
+  // Each separator ends its step, in its link, glued to its name's last character, for the eye alone: the line breaks
+  // after it, never leaving it alone on a line (M13 closeout, decision 968; review B's M13CB-M2).
+  expect(
+    [...crumbs.querySelectorAll("[aria-hidden]")].map((separator) => [
+      separator.textContent,
+      separator.parentElement?.className,
+      separator.previousSibling?.textContent,
+      separator.nextSibling,
+      separator.closest("a")?.textContent,
+    ])
+  ).toEqual([
+    ["/", "whitespace-nowrap", "s", null, "Plans/"],
+    ["/", "whitespace-nowrap", "e", null, "Guide/"],
+  ]);
   expect(within(crumbs).getByRole("link", { name: "Plans" }).getAttribute("href")).toBe(
     `/lab/notebooks/${notebookJSON.id}`
   );
@@ -330,4 +350,232 @@ test("a page gone back to after a tree read failed as its notebook was left says
   expect(await screen.findByRole("heading", { level: 1, name: "Notes" })).toBeTruthy();
   inserted.stop();
   expect(inserted.texts).toEqual([]);
+});
+
+// The page's head in one row (M13/P4/S1, decisions 858, 865, 894): its breadcrumbs, then its right group, who edited
+// the page last first in it, then the right column's toggle, the page's menu and Edit.
+
+/** edited finds the paragraph of the page's head that says text, its names in it. */
+const edited = (text: string) => (_: string, element: Element | null) =>
+  element?.tagName === "P" && element.textContent === text;
+
+/** group is the page's head's right group: the right column's toggle's. */
+function group(): HTMLElement {
+  const toggle = within(main()).getByRole("button", { name: "About this page" });
+  if (toggle.parentElement === null) {
+    throw new Error("the toggle is in no group");
+  }
+  return toggle.parentElement;
+}
+
+test("the page's head says who edited the page last, by its newest version, the name in a bdi, the time in full as its title; read once with the right column's; a paragraph, no status", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  vi.setSystemTime(new Date("2026-10-04T10:00:00Z"));
+  const server = pageServer();
+  server.withVersions(install.id, [
+    versionJSON(1, null, "Install\n", { by: bob, at: "2026-09-21T09:00:00Z" }),
+    versionJSON(2, 1, "Install\nmore\n", { at: "2026-10-03T08:00:00Z" }),
+  ]);
+  renderApp(pagePath(install.id), server.app);
+
+  const said = await within(main()).findByText(edited("Edited by Ada yesterday"));
+  expect([said.querySelector("bdi")?.textContent, said.getAttribute("title")]).toEqual(["Ada", "Oct 3, 2026, 8:00 AM"]);
+  expect(group().firstElementChild?.contains(said)).toBe(true);
+  expect(said.closest("output, [role=status]")).toBeNull();
+  expect(
+    within(main())
+      .queryAllByRole("status")
+      .some((status) => status.contains(said))
+  ).toBe(false);
+  await within(section("Versions")).findByRole("list", { name: "Versions" });
+  expect(server.sent.filter((sent) => sent.startsWith("GET versions"))).toEqual(["GET versions Install"]);
+});
+
+test("in Chinese, the page's head says who edited it as the mockup has it", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  vi.setSystemTime(new Date("2026-10-04T10:00:00Z"));
+  const server = pageServer();
+  server.withVersions(install.id, [versionJSON(1, null, "Install\n", { at: "2026-10-03T08:00:00Z" })]);
+  server.app.preferences.setLocale("zh-CN");
+  renderApp(pagePath(install.id), server.app);
+
+  const said = await within(main()).findByText(edited("Ada 编辑于昨天"));
+  expect(said.querySelector("bdi")?.textContent).toBe("Ada");
+});
+
+test.each([
+  ["en", "Edited by Ada yesterday"],
+  ["zh-CN", "Ada 编辑于昨天"],
+] as const)(
+  "%s: a long name is shortened alone in the page's head, the time kept whole (decision 899)",
+  async (locale, text) => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date("2026-10-04T10:00:00Z"));
+    const server = pageServer();
+    server.withVersions(install.id, [versionJSON(1, null, "Install\n", { at: "2026-10-03T08:00:00Z" })]);
+    server.app.preferences.setLocale(locale);
+    renderApp(pagePath(install.id), server.app);
+
+    const said = await within(main()).findByText(edited(text));
+    const name = said.querySelector("bdi");
+    // The sentence a row that does not shorten itself; the name in it shrinks and ends in an ellipsis (truncate).
+    expect([said.className.split(" ").includes("truncate"), name?.className.split(" ")]).toEqual([
+      false,
+      ["min-w-0", "truncate"],
+    ]);
+    expect(said.className).toContain("whitespace-pre");
+    // Too narrow for the words around the name, the start kept and the end cut (review A's P4S1A-F1-N2).
+    expect(said.className.split(" ")).toContain("justify-end-safe");
+  }
+);
+
+test("the page's head says nothing of who edited it while the page is edited", async () => {
+  const server = pageServer();
+  renderApp(pagePath(install.id), server.app);
+  await within(main()).findByText(
+    (_, element) => element?.tagName === "P" && (element.textContent ?? "").startsWith("Edited by ")
+  );
+
+  fireEvent.keyDown(document.activeElement ?? document.body, { key: "e", ctrlKey: true });
+  await pageEditor();
+  expect(within(main()).queryByText(/^Edited by /)).toBeNull();
+});
+
+test("a page without versions: the page's head's box of who edited it is there, empty", async () => {
+  const server = pageServer();
+  server.versions.set(install.id, []);
+  renderApp(pagePath(install.id), server.app);
+  await within(await screen.findByRole("complementary", { name: "About this page" })).findByText(
+    "One version per edit."
+  );
+
+  const box = group().firstElementChild;
+  expect(box?.querySelector("p")?.textContent).toBe("");
+  expect(within(main()).queryByText(/^Edited by /)).toBeNull();
+});
+
+test("the page's head comes before its title: its breadcrumbs, then its right group", async () => {
+  renderApp(pagePath(install.id), pageServer().app);
+
+  const heading = await screen.findByRole("heading", { level: 1, name: "Install" });
+  const crumbs = within(main()).getByRole("navigation", { name: "Breadcrumb" });
+  expect(crumbs.compareDocumentPosition(group()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(group().compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(within(group()).getByRole("button", { name: "Edit" })).toBeTruthy();
+  expect(within(group()).getByRole("button", { name: "Page actions" })).toBeTruthy();
+});
+
+test("Edit, holding the focus as an event makes the account a reader, gives it to the page's title, the window not scrolled", async () => {
+  const server = pageServer({ role: "editor" });
+  let root: RootStore | undefined;
+  function Capture() {
+    const store = useStore();
+    useEffect(() => {
+      root = store;
+    }, [store]);
+    return <Outlet />;
+  }
+  renderApp(pagePath(install.id), server.app, { routes: [{ Component: Capture, children: routes }] });
+  const edit = await within(main()).findByRole("button", { name: "Edit" });
+  edit.focus();
+  const focus = vi.spyOn(HTMLElement.prototype, "focus");
+
+  server.notebook = { ...server.notebook, role: "reader" };
+  act(() => root?.notebooksOf(workspaceJSON)?.receive(server.notebook));
+
+  expect(within(main()).queryByRole("button", { name: "Edit" })).toBeNull();
+  const heading = screen.getByRole("heading", { level: 1, name: "Install" });
+  await waitFor(() => expect(document.activeElement).toBe(heading));
+  const given = focus.mock.contexts.indexOf(heading);
+  expect(given).not.toBe(-1);
+  expect(focus.mock.calls[given]).toEqual([{ preventScroll: true }]);
+});
+
+// M13/P5/S1 (decisions 946, 951): PageColumn lays a column out as the page read lays its own: its outer box, a head's
+// row above it; the right column's room beside it only for the page's own branches (panel), the right column open.
+// Without panel none: the pages that have no right column keep their column where they read it, centred.
+
+/** The boxes a column of PageColumn's is in: its own row, and that row's outer box. */
+function columnOf(inside: HTMLElement) {
+  const row = inside.closest(".max-w-180")?.parentElement as HTMLElement;
+  return { row, outer: row.parentElement as HTMLElement };
+}
+
+/** Whether a column's outer box leaves the right column's room: the room, and the row's padding before it. */
+function roomOf(inside: HTMLElement) {
+  const { row, outer } = columnOf(inside);
+  return {
+    room: outer.querySelector(":scope > [aria-hidden].xl\\:w-63") !== null,
+    padded: row.classList.contains("xl:pe-10"),
+  };
+}
+
+test("a column without panel leaves no room for a right column, open or not", async () => {
+  const app = pageServer().app;
+  renderApp("/column", app, { routes: [{ path: "/column", element: <PageColumn>Body</PageColumn> }] });
+  const body = await screen.findByText("Body");
+
+  expect(app.preferences.panelOpen).toBe(true);
+  expect(roomOf(body)).toEqual({ room: false, padded: false });
+  // A head's row above it all the same.
+  expect(columnOf(body).row.firstElementChild?.getAttribute("aria-hidden")).toBe("true");
+});
+
+test.each([
+  ["its tree on its way", pagePath(install.id), "Loading…"],
+  ["not found", pagePath("0199a2b4-0000-7000-8000-0000000001ff"), "Page not found"],
+])("a page %s leaves the right column's room while it is open, none once it is folded away", async (_, path, shown) => {
+  const server = pageServer();
+  server.nodesHeld = shown === "Loading…";
+  renderApp(path, server.app);
+  // In the page's column: the notebook's layout says Loading… itself before the notebooks are read.
+  const what = await waitFor(() => {
+    const found = within(main()).getByText(shown);
+    expect(found.closest(".max-w-180")).not.toBeNull();
+    return found;
+  });
+
+  expect(roomOf(what)).toEqual({ room: true, padded: true });
+  act(() => server.app.preferences.setPanelOpen(false));
+  expect(roomOf(what)).toEqual({ room: false, padded: false });
+});
+
+/** An element's classes, sorted. */
+function classes(element: Element | undefined) {
+  return [...(element?.classList ?? [])].toSorted();
+}
+
+// M13/P5/S1 (review B's P5S1B-F1-N1): the empty row above a page's column on its way is laid out as the page read lays
+// its head's row, its two blocks as the trail, one line high, and the group: as high as the head's at every width, at
+// two lines too.
+test("a page on its way lays its head's row out empty, as the page read lays it", async () => {
+  const server = pageServer();
+  server.nodesHeld = true;
+  renderApp(pagePath(install.id), server.app);
+  const loading = await waitFor(() => {
+    const found = within(main()).getByText("Loading…");
+    expect(found.closest(".max-w-180")).not.toBeNull();
+    return found;
+  });
+  const empty = columnOf(loading).row.firstElementChild as HTMLElement;
+  const shape = {
+    row: classes(empty),
+    blocks: empty.children.length,
+    text: empty.textContent,
+    trail: classes(empty.children[0]),
+    group: classes(empty.children[1]),
+  };
+  act(() => server.release());
+  const trail = await within(main()).findByRole("navigation", { name: "Breadcrumb" });
+  const row = trail.parentElement as HTMLElement;
+  expect(within(main()).getByRole("heading", { level: 1, name: "Install" })).toBeTruthy();
+  expect(shape).toEqual({
+    row: classes(row),
+    blocks: 2,
+    text: "",
+    trail: [...classes(trail), "h-[1lh]", "text-compact"].toSorted(),
+    group: classes(row.children[1]).filter(
+      (each) => !["flex", "items-center", "justify-end", "gap-1.5"].includes(each)
+    ),
+  });
 });

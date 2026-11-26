@@ -159,6 +159,21 @@ test("a job that wrote leads to its changeset in the history, a revert to the ch
   expect(links(await row("Import of Old.zip"))).toEqual([]);
 });
 
+test("an undo's The change undone leaves the settings for the change it undoes, arrived at: its title takes the focus", async () => {
+  const user = userEvent.setup();
+  const server = jobsServer({ jobs: [revertOf(1, { progress: { done: 0, total: 0 }, report: reportOf(null) })] });
+  server.log("undone", { id: changesetId(7) });
+  const { router } = renderApp(transfer, server.app);
+
+  const undo = await row("Undo: ");
+  await user.click(within(undo).getByRole("link", { name: (named) => named.startsWith("The change undone ") }));
+
+  // Not read before it is arrived at: its title mounts once it is (ChangesetRead; M13/P3/S2, decision 839).
+  const title = await screen.findByRole("heading", { level: 1, name: "Edit · Ada" });
+  expect(router.state.location.pathname).toBe(history(changesetId(7)));
+  await waitFor(() => expect(document.activeElement).toBe(title));
+});
+
 test("a restore running says its progress in nodes, as the jobs are read again", async () => {
   const server = jobsServer({ jobs: [underWay(restoreOf(1), 0, 103)] });
   renderApp(transfer, server.app);
@@ -479,7 +494,7 @@ test.each([
     });
     const server = jobsServer({ jobs: [job] });
     renderApp(transfer, server.app);
-    await screen.findByRole("navigation", { name: "Pages of Plans" });
+    await screen.findByRole("navigation", { name: "Pages of Plans", hidden: true });
 
     const shown = await reportOpened(user, "Undo: Import");
 
@@ -608,7 +623,7 @@ test.each([
     });
     const server = jobsServer({ jobs: [job] });
     renderApp(transfer, server.app);
-    await screen.findByRole("navigation", { name: "Pages of Plans" });
+    await screen.findByRole("navigation", { name: "Pages of Plans", hidden: true });
 
     const shown = await reportOpened(user, "Undo: Import");
 
@@ -639,7 +654,7 @@ test.each([
   });
   const server = jobsServer({ jobs: [job], nodes: present ? [raw] : [] });
   renderApp(transfer, server.app);
-  await screen.findByRole("navigation", { name: "Pages of Plans" });
+  await screen.findByRole("navigation", { name: "Pages of Plans", hidden: true });
   expect(
     within(await row("Undo: Import")).getByText(
       "Failed · The notebook's rules as an LLM Wiki refused one of its writes."
@@ -687,7 +702,7 @@ test.each(["page", "asset"] as const)(
       nodes: [raw, folder, target, notes, refused],
     });
     const { router } = renderApp(transfer, server.app);
-    await screen.findByRole("navigation", { name: "Pages of Plans" });
+    await screen.findByRole("navigation", { name: "Pages of Plans", hidden: true });
     const shown = await reportOpened(user, "Undo: Import");
     expect(within(shown).getByText("This batch was not written; earlier completed batches are kept.")).toBeTruthy();
     expect(shown.textContent).not.toContain(refused.id);

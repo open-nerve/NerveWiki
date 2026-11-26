@@ -5,6 +5,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import type { Workspace } from "../../services/workspace.service";
 import { json, problem, signedInApp, workspaceJSON, type Answer } from "../../test/fakes";
 import { renderApp } from "../../test/render";
+import { arrived } from "../../app/arrival";
 import { watchFor } from "../../test/watch";
 
 // A workspace's general settings (M2/P5 design 3.6).
@@ -48,33 +49,48 @@ function settingsServer({
 }
 
 const nameField = () => screen.findByLabelText<HTMLInputElement>("Name");
+/** The name's Save, shown once the field holds another name (NameRow, M13/P3/S2). */
+const save = () => screen.queryByRole("button", { name: "Save" });
+/** Lets what a key or a click sent reach the fake server. */
+const settle = () => act(() => new Promise((resolve) => setTimeout(resolve, 20)));
 
-test("the settings of a workspace open on its general page", async () => {
+test("the settings of a workspace open on its general page, the left column their directory", async () => {
   const { router } = renderApp("/acme/settings", settingsServer().app);
 
-  expect(await screen.findByRole("heading", { level: 2, name: "General" })).toBeTruthy();
+  // The page's name its h1, which no h2 repeats (M13/P3/S2, decision 815).
+  expect(await screen.findByRole("heading", { level: 1, name: "General" })).toBeTruthy();
+  expect(screen.queryByRole("heading", { level: 2, name: "General" })).toBeNull();
   expect(router.state.location.pathname).toBe("/acme/settings/general");
-  const nav = screen.getByRole("navigation", { name: "Acme" });
-  expect(within(nav).getByRole("link", { name: "Settings" }).getAttribute("aria-current")).toBe("page");
-  expect(within(nav).getByRole("link", { name: "Home" }).getAttribute("aria-current")).toBeNull();
+  const nav = screen.getByRole("navigation", { name: "Workspace settings" });
+  expect(within(nav).getByRole("link", { name: "General" }).getAttribute("aria-current")).toBe("page");
+  expect(within(nav).getByRole("link", { name: "Members" }).getAttribute("aria-current")).toBeNull();
+  // The workspace's navigation is not there: the settings' mode (M13/P3/S1, decision 810).
+  expect(screen.queryByRole("navigation", { name: "Acme" })).toBeNull();
 });
 
-test("an admin renames the workspace; the switcher shows the new name", async () => {
+test("an admin renames the workspace; the directory names it so, and Back too", async () => {
   const user = userEvent.setup();
   const { app, sent } = settingsServer();
   renderApp("/acme/settings/general", app);
 
+  // Save shows once the field holds another name (NameRow, M13/P3/S2).
+  await nameField();
+  expect(save()).toBeNull();
   await user.clear(await nameField());
   await user.type(await nameField(), "  Acme Labs ");
-  await user.click(screen.getByRole("button", { name: "Save" }));
+  await user.click(save() as HTMLElement);
 
   expect(await screen.findByText("Saved.")).toBeTruthy();
   expect(sent).toEqual(["PATCH Acme Labs"]);
-  expect(screen.getByRole("button", { name: "Acme Labs" })).toBeTruthy();
+  expect(screen.getByRole("navigation", { name: "Workspace settings" }).textContent).toContain("Acme Labs");
+  expect(screen.getByRole("link", { name: "Back to Acme Labs" })).toBeTruthy();
   expect((await nameField()).value).toBe("Acme Labs");
 
-  // Saving the name it has sends nothing; an edit takes the saved state away.
-  await user.click(screen.getByRole("button", { name: "Save" }));
+  // Saved, Save goes, the field taking the focus; Enter sends nothing more; an edit takes the saved state away.
+  expect(save()).toBeNull();
+  await waitFor(async () => expect(document.activeElement).toBe(await nameField()));
+  await user.keyboard("{Enter}");
+  await settle();
   expect(sent).toEqual(["PATCH Acme Labs"]);
   await user.type(await nameField(), "!");
   expect(screen.queryByText("Saved.")).toBeNull();
@@ -101,18 +117,26 @@ test("a name edited while its rename is out keeps the edit, not marked saved", a
   });
   renderApp("/acme/settings/general", app);
   await user.clear(await nameField());
-  const save = screen.getByRole("button", { name: "Save" });
   await user.type(await nameField(), " Acme Labs");
-  await user.click(save);
+  await user.click(save() as HTMLElement);
   await waitFor(() => expect(sent).toHaveLength(1));
   await user.clear(await nameField());
+  // Save goes and comes as the field passes through the name, Acme, on the way (NameRow): the one at the end.
   await user.type(await nameField(), "Acme Works ");
+  const button = save() as HTMLElement;
+  expect(button.getAttribute("aria-busy")).toBe("true");
+  // Out, Save sends nothing more, Enter neither: counted once the answer came (M13/P3/S1's handoff, P3S1C-M1).
+  await user.keyboard("{Enter}");
+  await user.click(button);
   release?.();
-  await waitFor(() => expect(save).toHaveProperty("disabled", false));
+  // Not disabled while out: aria-busy, gone with the answer (review C's M5).
+  await waitFor(() => expect(button.getAttribute("aria-busy")).toBeNull());
+  await settle();
+  expect(sent).toHaveLength(1);
 
   expect((await nameField()).value).toBe("Acme Works ");
   expect(screen.queryByText("Saved.")).toBeNull();
-  await user.click(save);
+  await user.click(button);
   expect(await screen.findByText("Saved.")).toBeTruthy();
   expect(sent).toEqual(["PATCH Acme Labs", "PATCH Acme Works"]);
 });
@@ -213,7 +237,30 @@ test.each(["member", "guest"] as const)("a %s sees the name and the address, and
   expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
   expect(screen.queryByRole("button", { name: "Delete workspace" })).toBeNull();
   expect(screen.getByText("The address of a workspace cannot change.")).toBeTruthy();
+  // Each a value its row shows; no danger zone, nothing in it for them (M13/P3/S2, 4.2.6).
+  const main = within(screen.getByRole("main"));
+  expect(main.getByText("Acme").tagName).toBe("P");
+  expect(main.getByText("acme").tagName).toBe("P");
+  expect(main.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent)).toEqual(["Basics"]);
 });
+
+test.each([
+  ["en", "General", ["Basics", "Danger zone"], "Delete workspace"],
+  ["zh-CN", "常规", ["基本信息", "危险操作"], "删除工作区"],
+] as const)(
+  "an admin's general page, in %s: the basics, then the danger zone with the deletion",
+  async (locale, title, groups, deletion) => {
+    const { app } = settingsServer();
+    app.preferences.setLocale(locale);
+    renderApp("/acme/settings/general", app);
+
+    await screen.findByRole("heading", { level: 1, name: title });
+    const main = within(screen.getByRole("main"));
+    expect(main.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent)).toEqual(groups);
+    const danger = within(main.getByRole("heading", { level: 2, name: groups[1] }).parentElement as HTMLElement);
+    expect(danger.getByRole("button", { name: deletion })).toBeTruthy();
+  }
+);
 
 test("deleting the only workspace lands on the creation page, its heading focused", async () => {
   const user = userEvent.setup();
@@ -244,7 +291,17 @@ test("an untouched name follows a rename by another admin; Save sends nothing ba
   act(() => void window.dispatchEvent(new Event("focus")));
 
   await waitFor(async () => expect((await nameField()).value).toBe("Acme Works"));
-  await user.click(screen.getByRole("button", { name: "Save" }));
-  expect(await screen.findByText("Saved.")).toBeTruthy();
+  // Untouched, the name has no Save, and Enter sends nothing (NameRow, M13/P3/S2).
+  expect(save()).toBeNull();
+  await user.click(await nameField());
+  await user.keyboard("{Enter}");
+  await settle();
   expect(sent).toEqual([]);
+});
+
+test("a workspace's general page at its address with a trailing slash is its page still: its name the h1, which takes the arrival focus (decision 923)", async () => {
+  renderApp([{ pathname: "/acme/settings/general/", state: arrived }], settingsServer().app);
+
+  const title = await screen.findByRole("heading", { level: 1, name: "General" });
+  await waitFor(() => expect(document.activeElement).toBe(title));
 });

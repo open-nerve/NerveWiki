@@ -99,6 +99,10 @@ test("an undo too large here asks whether to undo it in the background: that it 
       .getAllByRole("button")
       .map((button) => button.textContent)
   ).toEqual(["Cancel", "Undo in the background"]);
+  // Its buttons a line each, to the right, where one line holds not both: at 320, English (decision 958, extended).
+  expect(within(dialog).getByRole("button", { name: "Undo in the background" }).parentElement?.className).toBe(
+    "flex flex-wrap justify-end gap-2"
+  );
   expect(within(dialog).queryByRole("alert")).toBeNull();
   expect(server.sent.filter((each) => each.startsWith("REVERT"))).toEqual(['REVERT rework "Back"']);
   expect(starts(server.asked)).toEqual([]);
@@ -433,6 +437,12 @@ test("an undo in the background whose answer was lost, the jobs not read again, 
     )
   );
   expect(within(status).getByRole("link", { name: "See the jobs" }).getAttribute("href")).toBe(transfer);
+
+  // Out of the notebook's pages into its settings, arrived at: the jobs' page's title takes the focus, not the body
+  // (M13/P5/S2, decision 924).
+  await user.click(within(status).getByRole("link", { name: "See the jobs" }));
+  const jobs = await screen.findByRole("heading", { level: 1, name: "Import, export and restore" });
+  await waitFor(() => expect(document.activeElement).toBe(jobs));
 });
 
 test("Undo in the background pressed twice sends one start; busy, it stays where the focus is, and nothing closes the dialog while it is out", async () => {

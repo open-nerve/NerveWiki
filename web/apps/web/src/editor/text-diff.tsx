@@ -257,7 +257,10 @@ function Failed({ again, busy, retry, root }: FailedProps) {
   useFocusLeaving(own, focusOn(root));
   return (
     <div ref={own} className="space-y-2" aria-busy={busy || undefined}>
-      <p role="alert" className="rounded-md border border-destructive/50 px-4 py-3 text-sm text-destructive">
+      <p
+        role="alert"
+        className="rounded-lg border border-destructive/35 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+      >
         {t(busy ? "diff.comparing" : again ? "diff.failedAgain" : "diff.failed")}
       </p>
       <div className="flex gap-2">
@@ -353,7 +356,7 @@ function UnifiedDiff({ state, legend, lines, busy, note }: UnifiedDiffProps) {
         <span>{t("diff.changes", { count: chunks })}</span>
         <span className="text-muted-foreground">{t("diff.lines", { added: lines.added, removed: lines.removed })}</span>
         <span className="text-muted-foreground">{legend}</span>
-        <span className="ms-auto flex gap-1">
+        <span className="ms-auto flex flex-wrap justify-end gap-1">
           <button type="button" className={buttonClass} disabled={chunks === 0} onClick={() => move(goToPreviousChunk)}>
             {t("diff.previous")}
           </button>
@@ -369,11 +372,12 @@ function UnifiedDiff({ state, legend, lines, busy, note }: UnifiedDiffProps) {
 }
 
 /**
- * The look of the diff's buttons: the app's outline button's (components/ui/button.tsx), which the editor does not
- * import (v0.1 design 13.2, item 6).
+ * The look of the diff's buttons: the app's small outline pill's (components/ui/button.tsx's size sm, shape pill), which
+ * the editor does not import (v0.1 design 13.2, item 6); the conflict's Keep mine and Discard mine are pills too
+ * (decision 878; M13 closeout, review B's M13CB-N2).
  */
 const buttonClass =
-  "inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md border bg-background px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors outline-none hover:bg-accent hover:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 aria-disabled:opacity-50";
+  "inline-flex h-7.5 shrink-0 items-center justify-center gap-1.5 rounded-full border border-border bg-surface px-3.25 text-compact font-medium whitespace-nowrap transition-colors duration-150 outline-none hover:hover-layer focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden disabled:pointer-events-none disabled:opacity-50 aria-disabled:opacity-50 dark:bg-surface-2";
 
 /** ReadOnlyText is a text in a read-only editor of its own, under its name. */
 function ReadOnlyText({ text, name }: { text: string; name: string }) {
@@ -414,7 +418,7 @@ function ReadOnlyText({ text, name }: { text: string; name: string }) {
  * of a light editor.
  */
 const diffTheme = EditorView.theme({
-  "& .cm-collapsedLines": { color: "var(--muted-foreground)", background: "var(--accent)" },
+  "& .cm-collapsedLines": { color: "var(--muted-foreground)", background: "var(--surface-2)" },
   "& .cm-changedLine, & .cm-deletedLine": { position: "relative", paddingInlineStart: "1.25em" },
   "& .cm-changedLine::before, & .cm-deletedLine::before": {
     position: "absolute",

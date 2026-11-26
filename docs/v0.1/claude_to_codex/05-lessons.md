@@ -122,6 +122,8 @@
   - 只改了中文的键，改回旧文字照过的有五个：读它们的格都只用英文。逐个键、逐种语言改回 `main` 的文字（变异），活下来的就是缺格（M12/P2/S2 的第 10 个提交，审查 C 的建议）。
 - **量计算之后的样式之前，先结束元素与它祖先的过渡**（`element.getAnimations().forEach((a) => a.finish())`，祖先的照此）：带 `transition-[color,box-shadow]` 的控件刚取得焦点时，读到的是过渡的起点（M12/P2 设计审查 B 的 M2）；背后的底色也可能在过渡里。`e2e/fixtures/contrast.ts` 结束元素与它祖先的 `CSSTransition`，无限的动画不碰（`finish()` 对它抛错）；不结束时 SE1 (page) 在 Chromium 五遍都红，环读成 0.098 px 或"没有焦点指示"（M12/P2/S3 的变异）。
 - **WebKit 把原生选择显示的那一项的文字整个算进页面的可滚动宽度**，选择的盒子在屏内、文字被它裁掉也一样：搜索页的"在哪里找"显示一个 98 个字的笔记本名，375 宽的页宽到 704（Playwright 1.63 的 WebKit 26.6；Chromium 的 UA 给选择 `overflow: clip`，不这样）。对选择写 `overflow`、改宽度、`text-overflow` 都不起作用（WebKit 的计算值仍是 `visible`），`contain: paint` 才裁掉；外层 `min-w-0` 只在改了样式、重排的那一下看起来管用，从头布局照样 704；外层 `overflow: hidden` 管用，但裁掉选择的焦点环。没有一个元素的盒子超出屏幕时，逐个元素 `display: none` 再看 `scrollWidth`，找得到是谁（M12/P2/S3，33.1 的排查）。
+- **界住排版的行数，按当前浏览器的字体量，不数本机的行数。** CI 的 Linux 字体更宽：PG17 第 2 格的 callout 标题在 macOS 的 375 宽是 4 行，Linux 的 Chromium、WebKit 超出，按 macOS 数的上限红了。上限改成元素的文字排成一行的宽度（暂时 `nowrap`、`max-content`）除以它有的宽度、向上取整，再加折行挤下的行；换 Verdana、Courier New 这类宽字体在三种引擎里验过它照样成立、照样抓得住错（M13/P4 的 CI 修复，`59cf6bd9`）。同一行与否按位置量（上边、下边），不数行。
+- **`expect.poll` 的判定里不要先数、再调会等待的方法。** `count()` 不等，`evaluate()` 等元素出现：元素在两次调用之间卸下，一次判定就耗尽 poll 的时限，报"Timeout … while waiting on the predicate"。用 `evaluateAll`、`allTextContents` 这类不等待的方法一次读完（M13/P2/S2 的 `notebookGroups`，CI 上的 C8，`5cd99e50`）。
 - **假的异步答复放到一个任务里。** 替身的 `async` 函数不 `await` 任何东西，就在微任务里答复；被测的代码要是答复之后又触发自己（点击又被拦、再签、再点），整个循环都在微任务里转，事件循环排不空，测试的 `setTimeout` 与 vitest 每格的时限都轮不到：变异不失败、只挂住，同样的回归会挂住整个 `make test-web`。假的答复先 `await new Promise((resolve) => setTimeout(resolve, 0))`，像网络那样在一个任务里（M12/P2/S5 的 P2S5C-C2-M1）。
 
 ## 7. CI

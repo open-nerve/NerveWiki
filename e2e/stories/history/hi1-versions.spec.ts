@@ -255,7 +255,8 @@ test("HI1 (page): two edits, the page left between them, are two more versions i
 
   const listed = versionsListed(page);
   await expect(listed).toHaveCount(3);
-  await expect(listed.nth(0)).toContainText(`Current${admin} · Edit`);
+  // Who wrote it, then its marks, after a space (M13/P5/S3, decision 943).
+  await expect(listed.nth(0)).toContainText(`${admin} · Edit Current`);
   await expect(listed.nth(1)).toContainText(`${admin} · Edit`);
   await expect(listed.nth(2)).toContainText(`${admin} · Edit`);
   const plainSecond = `${plainCreated}First`;

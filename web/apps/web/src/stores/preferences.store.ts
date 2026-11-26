@@ -19,6 +19,8 @@ export const themeKey = "nwiki.theme";
 const localeKey = "nwiki.locale";
 /** workspaceKey is where the slug of the workspace this device showed last is stored (M2/P5 design 3.3). */
 const workspaceKey = "nwiki.workspace";
+/** panelKey is where whether the page's right column is open is stored: "open" or "closed" (M13/P4/S1, decision 859). */
+const panelKey = "nwiki.panel";
 
 /** The part of localStorage the preferences use. */
 export type PreferenceStorage = Pick<Storage, "getItem" | "setItem">;
@@ -39,12 +41,15 @@ export interface PreferenceSources {
 
 /**
  * PreferencesStore holds this browser's display preferences, the theme and
- * the language, and the workspace it showed last. They belong to the
- * device, not to a login: the store outlives every RootStore.
+ * the language, whether the page's right column is open, and the workspace
+ * it showed last. They belong to the device, not to a login: the store
+ * outlives every RootStore.
  */
 export class PreferencesStore {
   theme: ThemePreference;
   locale: Locale;
+  /** Whether the page's right column is open beside the page: until it is folded away, or where it cannot be read. */
+  panelOpen: boolean;
   private systemDark: boolean;
   private readonly storage: PreferenceStorage;
   /** The last workspace of this page, which comes first once the storage failed to keep it. */
@@ -57,6 +62,7 @@ export class PreferencesStore {
     this.theme = isThemePreference(theme) ? theme : "system";
     const locale = read(storage, localeKey);
     this.locale = isLocale(locale) ? locale : localeFor(languages);
+    this.panelOpen = read(storage, panelKey) !== "closed";
     this.systemDark = darkScheme.matches;
     darkScheme.addEventListener("change", (event) => this.setSystemDark(event.matches));
     makeAutoObservable<this, "storage" | "workspace" | "workspaceKept">(this, {
@@ -83,6 +89,12 @@ export class PreferencesStore {
   setLocale(locale: Locale): void {
     this.locale = locale;
     write(this.storage, localeKey, locale);
+  }
+
+  /** setPanelOpen opens the page's right column or folds it away, for this browser's next pages too. */
+  setPanelOpen(open: boolean): void {
+    this.panelOpen = open;
+    write(this.storage, panelKey, open ? "open" : "closed");
   }
 
   /**

@@ -21,6 +21,9 @@ afterEach(() => {
   vi.unstubAllGlobals();
   // jsdom scrolls nothing: scrolls gives elements a way.
   Reflect.deleteProperty(Element.prototype, "scrollIntoView");
+  // userEvent.setup() gives the page a clipboard of its own, taken away by an afterEach of user-event's only where
+  // vitest's globals are: left, the cells after it would have a clipboard, each code block a Copy (review C).
+  Reflect.deleteProperty(navigator, "clipboard");
 });
 
 /** recording is an enhancement that logs, as name, the HTML it runs on and what it knows, and the HTML it is undone on. */
@@ -364,20 +367,37 @@ test("the wait's listeners go once its read settles", async () => {
     added.mockRestore();
     removed.mockRestore();
   });
-  // The inputs listened to in the capture phase: the wait's.
-  const inputs = (spy: typeof added | typeof removed) =>
-    spy.mock.calls
-      .filter(([type]) => ["wheel", "touchmove", "pointerdown", "keydown"].includes(type))
-      .filter(([, , options]) => options === true || (typeof options === "object" && options.capture === true))
-      .map(([type]) => type);
+  // The inputs listened to in the capture phase, as each listener's types, by the listener.
+  const inputs = (spy: typeof added | typeof removed) => {
+    const by = new Map<unknown, string[]>();
+    for (const [type, listener, options] of spy.mock.calls) {
+      const capture = options === true || (typeof options === "object" && options.capture === true);
+      if (capture && ["wheel", "touchmove", "pointerdown", "keydown"].includes(type)) {
+        by.set(listener, [...(by.get(listener) ?? []), type]);
+      }
+    }
+    return by;
+  };
+  // What still listens, by the listener: the wait's, the tree's watch of the reader for its row's reveal having ended
+  // as the row came into view (M13/P2/S2), as it had for the pages before.
+  const listening = () => {
+    const removedBy = inputs(removed);
+    return [...inputs(added)].flatMap(([listener, types]) =>
+      types.filter((type) => !(removedBy.get(listener) ?? []).includes(type)).map((type) => ({ listener, type }))
+    );
+  };
   const { server, release } = heldServer(["<p>Install</p>", '<h2 id="nw-x">X</h2>']);
   await openedFromTheCache(server, "#nw-x");
-  await waitFor(() => expect(inputs(added)).toHaveLength(4));
-  expect(inputs(removed)).toEqual([]);
+  await waitFor(() => expect(listening()).toHaveLength(4));
+  const waits = new Set(listening().map(({ listener }) => listener));
 
   await act(async () => release());
   await screen.findByRole("heading", { level: 2, name: "X" });
-  expect(new Set(inputs(removed))).toEqual(new Set(inputs(added)));
+  expect(listening().filter(({ listener }) => waits.has(listener))).toEqual([]);
+  // The one left is the outline's, come with the view: its watch of the reader in the right column, while its list is
+  // up (M13/P4/S1, decision 886).
+  expect(listening().map(({ type }) => type)).toEqual(["wheel", "touchmove", "pointerdown", "keydown"]);
+  expect(screen.getByRole("navigation", { name: "Outline" })).toBeTruthy();
 });
 
 test("the browser's own scrolling during the wait is not the reader's: the element the read brings takes the focus", async () => {
@@ -1117,11 +1137,12 @@ async function readable(html: string, enhancements: Enhancement[] = []) {
   const article = await screen.findByRole("article", { name: "Install" });
   await waitFor(() => expect(reloads).toHaveLength(1));
   let revision = 1;
-  const readAgain = async (next: string) => {
+  // The view read again shows next's text, or what its enhancements make of it (a code block's head).
+  const readAgain = async (next: string, shown = next.replace(/<[^>]*>/g, "")) => {
     revision += 1;
     server.views.set(install.id, { html: next, revision, assets_expire_at: null });
     act(() => reloads.at(-1)?.());
-    await waitFor(() => expect(article.textContent).toBe(next.replace(/<[^>]*>/g, "")));
+    await waitFor(() => expect(article.textContent).toBe(shown));
   };
   return { server, article, readAgain };
 }
@@ -1273,6 +1294,7 @@ async function drawn(html: string) {
   const draw: Drawer = {
     initialize: () => undefined,
     detectType: () => "flowchart",
+    parse: async () => ({ config: {} }),
     render: async (id, text) => ({ svg: `<svg id="${id}"><text>${text}</text></svg>` }),
   };
   const opened = await readable(html, [diagrams(async () => draw, seen), scrollRegions]);
@@ -1339,6 +1361,61 @@ test("a link whose paragraph is written without it gives the focus to the paragr
   expect(document.activeElement).not.toBe(far);
   expect(document.activeElement).toBe(article.querySelector("p"));
   expect(scroll).not.toHaveBeenCalled();
+});
+
+/** twoBlocks is a view of a paragraph, then two code blocks, the second's code second. */
+const twoBlocks = (first: string, second: string) =>
+  `<p>${first}</p>\n<pre><code>make build</code></pre>\n<pre><code>${second}</code></pre>\n`;
+
+/** copyable reads a view through the app's enhancements, the page given a clipboard: each code block has its Copy. */
+async function copyable(html: string) {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      disconnect() {}
+    }
+  );
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: () => Promise.resolve() } });
+  onTestFinished(() => void Reflect.deleteProperty(navigator, "clipboard"));
+  const read = await readable(html, [...readingEnhancements]);
+  const copies = () => within(read.article).getAllByRole("button", { name: "Copy" });
+  await waitFor(() => expect(copies()).toHaveLength(2));
+  return { ...read, copies };
+}
+
+/** shownOf is what a view of twoBlocks shows, each code block's head before its code. */
+const shownOf = (first: string, second: string) => `${first}\nCopymake build\nCopy${second}\n`;
+
+// M13/P4/S2 (decision 869; review C's M9): a code block's head is made anew as the view is written, its block kept or
+// not; the Copy that had the focus has it back, found by which of its block's it is.
+test("a code block's Copy that had the focus has it back as its block is written anew by another", async () => {
+  const { article, readAgain, copies } = await copyable(twoBlocks("one", "go test"));
+  const before = copies()[1] as HTMLElement;
+  before.focus();
+
+  await readAgain(twoBlocks("one", "go vet"), shownOf("one", "go vet"));
+
+  const blocks = article.querySelectorAll("pre");
+  expect(blocks[1]?.textContent).toBe("Copygo vet");
+  expect(document.activeElement).not.toBe(before);
+  expect(document.activeElement).toBe(blocks[1]?.querySelector("button.nw-code-copy"));
+});
+
+test("a code block's Copy that had the focus has it back, made anew, as another block is written by another", async () => {
+  const { article, readAgain, copies } = await copyable(twoBlocks("one", "go test"));
+  const kept = article.querySelectorAll("pre")[1];
+  const before = copies()[1] as HTMLElement;
+  before.focus();
+
+  await readAgain(twoBlocks("two", "go test"), shownOf("two", "go test"));
+
+  const blocks = article.querySelectorAll("pre");
+  // The block kept, its head made anew: one head in each block, the focus on the new Copy of the second.
+  expect(blocks[1]).toBe(kept);
+  expect([...blocks].map((block) => block.querySelectorAll(".nw-code-head").length)).toEqual([1, 1]);
+  expect(before.isConnected).toBe(false);
+  expect(document.activeElement).toBe(blocks[1]?.querySelector("button.nw-code-copy"));
 });
 
 /** sized has the ResizeObserver tell each element it observes its size as it starts, as a browser does at the next rendering. */

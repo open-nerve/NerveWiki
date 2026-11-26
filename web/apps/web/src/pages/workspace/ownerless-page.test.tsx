@@ -1,6 +1,6 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 
 import type { Notebook } from "../../services/notebook.service";
 import type { NotebookAuditEvent, NotebookAuditEventPage, OwnerlessNotebook } from "../../services/ownerless.service";
@@ -106,7 +106,8 @@ function ownerlessServer({ role = "admin", list = [ownerlessJSON, atlas], pages,
   return Object.assign(server, { app });
 }
 
-const heading = () => screen.findByRole("heading", { level: 2, name: "Ownerless notebooks" });
+/** The page's h1, its name (M13/P3/S2, decision 815). */
+const heading = () => screen.findByRole("heading", { level: 1, name: "Ownerless notebooks" });
 
 /** How the row's controls name a notebook of Bob's: by its name and its former owner. */
 const takeOver = (name: string) => `Take over ${name}, former owner Bob (bob@example.com)`;
@@ -179,7 +180,10 @@ test("two notebooks of one former owner with one name each show the end of their
 test("with none, the page says so", async () => {
   renderApp(page, ownerlessServer({ list: [] }).app);
 
-  expect(await screen.findByText("No ownerless notebooks.")).toBeTruthy();
+  const line = await screen.findByText("No ownerless notebooks.");
+  // Said with an icon, read by no one, in a paragraph (M13/P5/S1, decision 938).
+  expect(line.tagName).toBe("P");
+  expect(line.previousElementSibling?.getAttribute("aria-hidden")).toBe("true");
 });
 
 test.each(["member", "guest"] as const)(
@@ -213,20 +217,23 @@ test("taking one over puts it among the account's notebooks, says so with a way 
   expect((await rows()).map(([name]) => name)).toEqual(["Atlas"]);
   const status = screen.getByRole("status");
   expect(status.textContent).toBe("Roadmap taken over. Open it");
-  const nav = screen.getByRole("navigation", { name: "Lab" });
-  expect(within(within(nav).getByRole("list", { name: "Team notebooks" })).getByRole("link").textContent).toBe(
-    "Roadmap"
-  );
   await waitFor(() => expect(server.sent.filter((sent) => sent === "GET audit")).toHaveLength(2));
 
   await user.click(within(status).getByRole("link", { name: "Open it" }));
-  expect(await screen.findByRole("heading", { level: 1, name: "Roadmap" })).toBeTruthy();
+  // The settings left, the notebook's home arrived at: its title takes the focus (M13/P3/S2, decision 839).
+  const title = await screen.findByRole("heading", { level: 1, name: "Roadmap" });
   expect(router.state.location.pathname).toBe(`/lab/notebooks/${ownerlessJSON.id}`);
+  await waitFor(() => expect(document.activeElement).toBe(title));
+  // Out of the settings, the left column is the workspace's again: the notebook among the team's.
+  const nav = screen.getByRole("navigation", { name: "Lab" });
+  expect(within(within(nav).getByRole("list", { name: "Team notebooks" })).getAllByRole("link")[0]?.textContent).toBe(
+    "Roadmap"
+  );
 });
 
 // M12/P2/S1, 22.17: the reader typing elsewhere as the answer comes keeps the focus and the keys (v0.1 design 13.2,
 // item 26).
-test("a take-over answered as the reader types in the search box leaves the focus and the keys there", async () => {
+test("a take-over answered as the reader types in another field leaves the focus and the keys there", async () => {
   const user = userEvent.setup();
   let answer: ((response: Response) => void) | undefined;
   const server = ownerlessServer({
@@ -235,7 +242,12 @@ test("a take-over answered as the reader types in the search box leaves the focu
   renderApp(page, server.app);
   await user.click(await screen.findByRole("button", { name: takeOver("Roadmap") }));
   await waitFor(() => expect(answer).toBeDefined());
-  const box = screen.getByRole("searchbox", { name: "Search terms" }) as HTMLInputElement;
+  // The settings' mode has no search box, nor the page another field (M13/P3/S1, decision 819): one of the test's,
+  // in the body, which the cleanup leaves there unless the cell takes it away (review C, P3C-N8).
+  const box = document.createElement("input");
+  box.setAttribute("aria-label", "Elsewhere");
+  document.body.append(box);
+  onTestFinished(() => box.remove());
   await user.click(box);
   await user.keyboard("ab");
 
@@ -390,7 +402,8 @@ test("the list says so when it cannot be read; Try again reads it", async () => 
   const server = ownerlessServer();
   server.down = true;
   renderApp(page, server.app);
-  const section = (await heading()).closest("section") as HTMLElement;
+  // The list's group, untitled: its title would be the page's (M13/P3/S2, decision 851).
+  const section = (await screen.findByText(/^Notebooks left without an admin/)).closest("section") as HTMLElement;
 
   expect((await within(section).findByRole("alert")).textContent).toBe(
     "Cannot reach the server. Check the connection and try again."
@@ -518,7 +531,10 @@ test("an empty audit says so; one that cannot be read says why, and Try again re
   server.pages = { "": { data: [], next_cursor: null } };
   await user.click(within(section).getByRole("button", { name: "Try again" }));
 
-  expect(await within(section).findByText("Nothing yet.")).toBeTruthy();
+  const none = await within(section).findByText("Nothing yet.");
+  // Said with an icon, read by no one, in a paragraph (M13/P5/S1, decision 938).
+  expect(none.tagName).toBe("P");
+  expect(none.previousElementSibling?.getAttribute("aria-hidden")).toBe("true");
 });
 
 test("going from one workspace's ownerless notebooks straight to another's lists the other's, and its audit", async () => {
@@ -542,4 +558,17 @@ test("going from one workspace's ownerless notebooks straight to another's lists
   await waitFor(async () =>
     expect(await events()).toEqual(["Ada (ada@example.com) deleted Roadmap; former owner: Bob (bob@example.com)."])
   );
+});
+
+// The page's groups (M13/P3/S2, decision 851): the list first, untitled, the page's name saying it; the audit's.
+test("the ownerless notebooks' page: the list untitled, then the audit log", async () => {
+  renderApp(page, ownerlessServer().app);
+
+  const list = await screen.findByRole("list", { name: "Ownerless notebooks" });
+  expect(list.closest("section")?.querySelector("h2")).toBeNull();
+  const main = within(screen.getByRole("main"));
+  expect(main.getAllByRole("heading", { level: 2 }).map((each) => each.textContent)).toEqual(["Audit log"]);
+  expect(
+    main.getByRole("heading", { level: 2, name: "Audit log" }).closest("section")?.querySelector("ol")
+  ).not.toBeNull();
 });

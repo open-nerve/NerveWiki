@@ -1,3 +1,4 @@
+import { ArrowLeftRight } from "lucide-react";
 import { observer } from "mobx-react-lite";
 import { useCallback, useEffect, useRef, type RefObject } from "react";
 import { useLocation } from "react-router";
@@ -6,7 +7,9 @@ import useSWR from "swr";
 import { useMounted } from "../../app/mounted";
 import { NotLoaded } from "../../app/not-loaded";
 import { errorText } from "../../app/problem-messages";
+import { SettingsCard, SettingsRow, SettingsSection } from "../../app/settings-page";
 import { frozenByUpgrade, writesNotebook } from "../../app/effective-role";
+import { EmptyState } from "../../components/empty-state";
 import { Button } from "../../components/ui/button";
 import { useT } from "../../i18n/i18n";
 import type { Notebook } from "../../services/notebook.service";
@@ -59,18 +62,20 @@ export function pollInterval(transfers: Pick<TransferStore, "active" | "jobs">, 
  * NotebookTransferPage is the notebook's imports, exports, and restores
  * and undos in the background (M7/P5 design 4.3, P6 design 4.2; M8/P4
  * design 4.3): its editors import into it; whoever sees the notebook
- * exports it, and sees their jobs; its admins see everyone's.
+ * exports it, and sees their jobs; its admins see everyone's. The import
+ * and the export each a group of one row, which the group's title names;
+ * the jobs a group whose card is their list (M13/P3/S2, decision 820).
  */
 export const NotebookTransferPage = observer(function NotebookTransferPage() {
   const notebook = useNotebook();
   const rows = useRef(new Map<string, HTMLLIElement>());
   const heading = useRef<HTMLHeadingElement>(null);
   return (
-    <div className="space-y-10">
+    <>
       <ImportSection notebook={notebook} rows={rows} heading={heading} />
       <ExportSection notebook={notebook} rows={rows} heading={heading} />
       <JobsSection notebook={notebook} rows={rows} heading={heading} />
-    </div>
+    </>
   );
 });
 
@@ -78,8 +83,9 @@ type Rows = RefObject<Map<string, HTMLLIElement>>;
 
 /**
  * ImportSection imports a zip into the notebook, for its editors; a
- * reader is told who can. The focus goes to the job's row once it
- * started, or to the jobs' title while they are not shown.
+ * reader is told who can, the row's value (review B's P3S2B-N4). The
+ * focus goes to the job's row once it started, or to the jobs' title
+ * while they are not shown.
  */
 function ImportSection({
   notebook,
@@ -94,28 +100,38 @@ function ImportSection({
   const started = useRef<string | undefined>(undefined);
   // The section's, not the dialog's: the dialog goes too when the notebook's role drops to reader.
   const mounted = useMounted();
+  const writes = writesNotebook(notebook);
   return (
-    <section className="max-w-2xl space-y-3">
-      <h2 className="text-lg font-semibold">{t("transfer.importTitle")}</h2>
-      <p className="text-sm text-muted-foreground">{t("transfer.importBody")}</p>
-      {writesNotebook(notebook) ? (
-        <ImportDialog
-          notebook={notebook}
-          trigger={<Button variant="outline">{t("transfer.importZip")}</Button>}
-          onStarted={(job) => (started.current = job.id)}
-          focusAfter={() => {
-            if (started.current !== undefined) {
-              (rows.current.get(started.current) ?? heading.current)?.focus();
-            }
-          }}
-          mounted={mounted}
-        />
-      ) : (
-        <p className="text-sm">
-          {t(frozenByUpgrade(notebook) ? "notebook.upgradeReadOnly" : "transfer.importReaders")}
-        </p>
-      )}
-    </section>
+    <SettingsSection title={t("transfer.importTitle")}>
+      <SettingsCard>
+        <SettingsRow
+          description={t("transfer.importBody")}
+          value={
+            writes ? undefined : t(frozenByUpgrade(notebook) ? "notebook.upgradeReadOnly" : "transfer.importReaders")
+          }
+        >
+          {writes
+            ? () => (
+                <ImportDialog
+                  notebook={notebook}
+                  trigger={
+                    <Button variant="outline" size="sm" shape="pill">
+                      {t("transfer.importZip")}
+                    </Button>
+                  }
+                  onStarted={(job) => (started.current = job.id)}
+                  focusAfter={() => {
+                    if (started.current !== undefined) {
+                      (rows.current.get(started.current) ?? heading.current)?.focus();
+                    }
+                  }}
+                  mounted={mounted}
+                />
+              )
+            : undefined}
+        </SettingsRow>
+      </SettingsCard>
+    </SettingsSection>
   );
 }
 
@@ -135,20 +151,28 @@ function ExportSection({
   const t = useT();
   const started = useRef<string | undefined>(undefined);
   return (
-    <section className="max-w-2xl space-y-3">
-      <h2 className="text-lg font-semibold">{t("transfer.exportTitle")}</h2>
-      <p className="text-sm text-muted-foreground">{t("transfer.exportBody")}</p>
-      <ExportDialog
-        notebook={notebook}
-        trigger={<Button variant="outline">{t("transfer.exportNotebook")}</Button>}
-        onStarted={(job) => (started.current = job.id)}
-        focusAfter={() => {
-          if (started.current !== undefined) {
-            (rows.current.get(started.current) ?? heading.current)?.focus();
-          }
-        }}
-      />
-    </section>
+    <SettingsSection title={t("transfer.exportTitle")}>
+      <SettingsCard>
+        <SettingsRow description={t("transfer.exportBody")}>
+          {() => (
+            <ExportDialog
+              notebook={notebook}
+              trigger={
+                <Button variant="outline" size="sm" shape="pill">
+                  {t("transfer.exportNotebook")}
+                </Button>
+              }
+              onStarted={(job) => (started.current = job.id)}
+              focusAfter={() => {
+                if (started.current !== undefined) {
+                  (rows.current.get(started.current) ?? heading.current)?.focus();
+                }
+              }}
+            />
+          )}
+        </SettingsRow>
+      </SettingsCard>
+    </SettingsSection>
   );
 }
 
@@ -201,22 +225,21 @@ const JobsSection = observer(function JobsSection({
   const moreFailed = more.failure === undefined ? undefined : errorText(more.failure, t);
 
   return (
-    <section className="space-y-4">
-      <div className="max-w-2xl space-y-1">
-        <h2 ref={heading} tabIndex={-1} className="text-lg font-semibold outline-none">
-          {t("transfer.jobsTitle")}
-        </h2>
-        <p className="text-sm text-muted-foreground">{t("transfer.jobsBody")}</p>
-      </div>
+    <SettingsSection title={t("transfer.jobsTitle")} heading={heading}>
+      <p className="max-w-2xl px-0.5 text-sm text-muted-foreground">{t("transfer.jobsBody")}</p>
       {jobs === undefined || names === undefined ? (
         <NotLoaded error={error} retry={reread} />
       ) : (
         <>
           {error !== undefined && <NotLoaded error={error} retry={reread} />}
           {jobs.length === 0 ? (
-            <p className="text-muted-foreground">{t("transfer.none")}</p>
+            <SettingsCard>
+              <EmptyState icon={ArrowLeftRight} size="card">
+                {t("transfer.none")}
+              </EmptyState>
+            </SettingsCard>
           ) : (
-            <ol aria-label={t("transfer.jobsTitle")} className="divide-y rounded-md border">
+            <SettingsCard ordered label={t("transfer.jobsTitle")}>
               {jobs.map((job) => (
                 <TransferJobRow
                   key={job.id}
@@ -227,7 +250,7 @@ const JobsSection = observer(function JobsSection({
                   reread={reread}
                 />
               ))}
-            </ol>
+            </SettingsCard>
           )}
         </>
       )}
@@ -241,7 +264,7 @@ const JobsSection = observer(function JobsSection({
           )}
         </div>
       )}
-    </section>
+    </SettingsSection>
   );
 });
 

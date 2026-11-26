@@ -46,6 +46,46 @@ test("a step of the keys waits, shown, until Enter, which uses it and keeps the 
   expect(used).toEqual(["b"]);
 });
 
+// Escape takes a step back (M13/P3/S2, decision 840): the choice in use shown again, the key the select's alone.
+test("a step of the keys, Escape takes it back: the choice in use shown again, nothing used then or once left; with nothing waiting Escape is the browser's", () => {
+  const { select, used } = shown();
+
+  fireEvent.keyDown(select, { key: "ArrowDown" });
+  fireEvent.change(select, { target: { value: "b" } });
+  expect(select.value).toBe("b");
+  expect(fireEvent.keyDown(select, { key: "Escape" })).toBe(false);
+  expect(select.value).toBe("a");
+  fireEvent.blur(select);
+  expect(used).toEqual([]);
+
+  // Nothing waits: the key is not handled, and a step after it waits again as one does.
+  expect(fireEvent.keyDown(select, { key: "Escape" })).toBe(true);
+  fireEvent.keyDown(select, { key: "ArrowDown" });
+  fireEvent.change(select, { target: { value: "c" } });
+  fireEvent.keyDown(select, { key: "Enter" });
+  expect(used).toEqual(["c"]);
+});
+
+test("the Escape that takes a step back goes no further: what holds the select hears it only with nothing waiting", () => {
+  const used: string[] = [];
+  const heard: string[] = [];
+  render(
+    // A toolbar of one, as a widget that listens to its keys would hold the select (its lint wants a role, a focus).
+    <div role="toolbar" aria-label="Holder" tabIndex={-1} onKeyDown={(event) => heard.push(event.key)}>
+      <Choice used={used} />
+    </div>
+  );
+  const select = screen.getByRole("combobox", { name: "Choice" });
+
+  fireEvent.keyDown(select, { key: "ArrowDown" });
+  fireEvent.change(select, { target: { value: "b" } });
+  fireEvent.keyDown(select, { key: "Escape" });
+  expect(heard).toEqual(["ArrowDown"]);
+  fireEvent.keyDown(select, { key: "Escape" });
+  expect(heard).toEqual(["ArrowDown", "Escape"]);
+  expect(used).toEqual([]);
+});
+
 test("the keys that open the list are no step, and each key says anew whether it steps: a change after them is used at once", () => {
   const { select, used } = shown();
 
@@ -100,4 +140,29 @@ test("on macOS the arrows and the others that step elsewhere are no step, as the
   expect(used).toEqual(["b", "a", "c", "a", "c", "a"]);
   fireEvent.blur(select);
   expect(used).toEqual(["b", "a", "c", "a", "c", "a", "b"]);
+});
+
+test("it is drawn by the app, its paint contained", () => {
+  render(
+    <NativeSelect aria-label="Where">
+      <option>Everywhere</option>
+    </NativeSelect>
+  );
+  const { classList } = screen.getByRole("combobox", { name: "Where" });
+  // The app's chevron, appearance none, which forced colours give back to the browser (styles.css's nw-select).
+  expect(classList.contains("nw-select")).toBe(true);
+  // WebKit counts the text of the option shown in the page's width otherwise (M5-polish 33.1; v0.1 design 13.2 item 31).
+  expect(classList.contains("contain-paint")).toBe(true);
+});
+
+test("what is invalid shows on the select", () => {
+  render(
+    <NativeSelect aria-label="Expires" aria-invalid>
+      <option>Never</option>
+    </NativeSelect>
+  );
+  const select = screen.getByRole("combobox", { name: "Expires" });
+  expect(select.getAttribute("aria-invalid")).toBe("true");
+  expect(select.classList.contains("aria-invalid:border-destructive")).toBe(true);
+  expect(select.classList.contains("aria-invalid:ring-destructive")).toBe(true);
 });

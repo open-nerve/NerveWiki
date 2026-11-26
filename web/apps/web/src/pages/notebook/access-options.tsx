@@ -4,8 +4,8 @@ import { useT } from "../../i18n/i18n";
 import type { MessageKey } from "../../i18n/messages/en";
 import type { WorkspaceAccess } from "../../services/notebook.service";
 
-/** The workspace accesses a notebook can have, from the closest (M3 design 4). */
-const accesses = [
+/** The workspace accesses a notebook can have, from the closest (M3 design 4): the dialog's radios, the page's select. */
+export const accesses = [
   { value: "none", label: "access.none", hint: "access.noneHint" },
   { value: "viewer", label: "access.viewer", hint: "access.viewerHint" },
   { value: "editor", label: "access.editor", hint: "access.editorHint" },

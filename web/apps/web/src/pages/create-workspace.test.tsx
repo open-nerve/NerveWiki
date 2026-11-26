@@ -145,7 +145,7 @@ test("a creation answered after the page was left does not go into the workspace
   await user.click(screen.getByRole("button", { name: "Create workspace" }));
   await waitFor(() => expect(release).toBeDefined());
   await act(() => router.navigate("/settings/profile"));
-  await screen.findByRole("heading", { level: 1, name: "Settings" });
+  await screen.findByRole("heading", { level: 1, name: "Profile" });
   release?.();
   await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
 
@@ -209,7 +209,10 @@ test("while creation is off, the page says how to get into a workspace, with no 
   const { app } = creationServer(undefined, false);
   renderApp("/create-workspace", app);
 
-  expect(await screen.findByText(/workspaces are created by its administrator/)).toBeTruthy();
+  // The card's text at 14px (decision 948).
+  expect((await screen.findByText(/workspaces are created by its administrator/)).className.split(" ")).toContain(
+    "text-sm"
+  );
   expect(screen.queryByRole("textbox")).toBeNull();
   expect(screen.queryByRole("button", { name: "Create workspace" })).toBeNull();
 });

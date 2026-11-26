@@ -5,6 +5,7 @@ import { expectUpgrade, upgradesOf } from "../../fixtures/assert/wiki";
 import { answerTo, failedToLoad } from "../../fixtures/browser";
 import type { Database } from "../../fixtures/db";
 import { mcpClient, resultOf } from "../../fixtures/mcp";
+import { expectButtonsInside } from "../../fixtures/narrow";
 import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, listNodes, postPage, readContent } from "../../fixtures/pages";
@@ -272,6 +273,13 @@ test("UP3 (page): an admin abandons the upgrade on its page; the rollback, queue
 
     await abandon.click();
     const abandonDialog = page.getByRole("alertdialog", { name: "Abandon the upgrade of “Field notes”?", exact: true });
+    // 320 wide, Cancel and Abandon the upgrade inside the dialog, a line each, as one line holds not both (decision
+    // 958, extended to the confirming dialogs).
+    const wide = page.viewportSize() ?? { width: 1280, height: 720 };
+    await page.setViewportSize({ width: 320, height: 800 });
+    await expect(abandonDialog.getByRole("button", { name: "Abandon the upgrade", exact: true })).toBeVisible();
+    await expectButtonsInside(abandonDialog);
+    await page.setViewportSize(wide);
     const abandoned = answerTo(page, "POST", `/api/v0/notebooks/${notebook.id}/upgrade/abandon`);
     await abandonDialog.getByRole("button", { name: "Abandon the upgrade", exact: true }).click();
     expect((await abandoned).status()).toBe(200);

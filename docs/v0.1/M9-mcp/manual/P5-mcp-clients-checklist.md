@@ -43,7 +43,7 @@
    ```
 
    （两次 `read` 各粘贴一本笔记本的 id、回车。）第 I 部分的终端另设 `export CADDY=http://127.0.0.1:8091`（经 Caddy 的地址，I3 用）。
-3. A 在"设置"→"访问令牌"（`$BASE/settings/tokens`）建三个 PAT：`seed`（下一步用）、`claude-checklist`、`codex-checklist`。
+3. A 在左下角账户行的菜单里点"设置"，再点设置目录"个人"一组的"访问令牌"（`$BASE/settings/tokens`），建三个 PAT：`seed`（下一步用）、`claude-checklist`、`codex-checklist`。
 4. 种下页与附件，两本笔记本各一次：
    - 准备三个文件，每个的字节都要是它的名字说的类型：服务端按开头的字节判断，名字是 `.png` 而字节是 JPEG 的附件存成 `application/octet-stream`，不直接放进答复（`asset/domain/types.go` 的 `TypeOf`）。`small.png` 是 PNG、每边不过 1,000 像素、几十 KB（例如一张截图以 `sips -Z 800 -s format png 截图.png --out small.png` 缩小）；`wide.png` 是 PNG、宽 2,500–7,000 像素、2.0–2.8 MiB（JPEG 或别的格式先转成 PNG：`sips -s format png 照片.jpg --out wide.png`，太大时加 `-Z` 与一个像素数缩小再转；以 `sips -g pixelWidth -g pixelHeight wide.png` 与 `ls -l` 核对：3 MiB 以上的不直接放进答复）；`doc.pdf` 是一个小的 PDF。做好之后 `file small.png wide.png doc.pdf`：前两个是 "PNG image data"，第三个是 "PDF document"。
    - 把下面的脚本存成临时目录里的 `seed.mjs`，`read -rs SEED_TOKEN && export SEED_TOKEN`（`seed` 的令牌），然后 `node seed.mjs "$BASE" "$NB_CC" small.png wide.png doc.pdf` 与 `node seed.mjs "$BASE" "$NB_CODEX" small.png wide.png doc.pdf`（Node 22 起；它只经 REST 建页、上传附件）：

@@ -64,6 +64,17 @@ test("the left column lists the account's own notebooks, then the team's, each b
       .getAllByRole("heading", { level: 2 })
       .map((h) => h.textContent)
   ).toEqual(["My notebooks", "Team notebooks"]);
+  // A name cut short has its whole as its title, on its text, not on the link, whose name it is already (M13
+  // closeout, review A's M13CA-M1).
+  const links = within(column).getAllByRole("link", { name: /^(Atlas|Beta|Plans|Zeta)$/ });
+  expect(
+    links.map((link) => [link.getAttribute("title"), link.querySelector("[title]")?.getAttribute("title")])
+  ).toEqual([
+    [null, "Beta"],
+    [null, "Plans"],
+    [null, "Atlas"],
+    [null, "Zeta"],
+  ]);
 });
 
 test.each([
@@ -204,8 +215,10 @@ test("a notebook created opens on its home, arrived at, and the left column list
   document.removeEventListener("focusin", record);
   expect(document.activeElement).toBe(heading);
   expect(focused.map((element) => element.textContent)).not.toContain("New notebook");
-  const link = within(await within(await nav()).findByRole("list", { name: "Team notebooks" })).getByRole("link");
-  expect([link.textContent, link.getAttribute("aria-current")]).toEqual(["Field notes", "page"]);
+  // The first item's first link: the open notebook's item holds its row's, its tree's and its places' (M13/P2/S2).
+  const team = await within(await nav()).findByRole("list", { name: "Team notebooks" });
+  const link = team.querySelector(":scope > li")?.querySelector("a");
+  expect([link?.textContent, link?.getAttribute("aria-current")]).toEqual(["Field notes", "page"]);
 });
 
 test("a Chinese preference creates an LLM Wiki with its Chinese template", async () => {

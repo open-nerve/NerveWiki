@@ -1,32 +1,52 @@
-import { Ellipsis, File, FileAudio, FileImage, FileText, FileVideo, type LucideIcon } from "lucide-react";
+import {
+  Download,
+  Ellipsis,
+  FileAudio,
+  FileImage,
+  FileText,
+  FileType,
+  FileVideo,
+  Paperclip,
+  type LucideIcon,
+} from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, type Ref } from "react";
 
+import { revealClass } from "../../app/page-classes";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
 import { formatBytes } from "../../i18n/format";
 import { useT } from "../../i18n/i18n";
 import { assetKind, embedOf, opensInline, type AssetKind } from "../../lib/asset-kind";
+import { cn } from "../../lib/cn";
 import { focusLost } from "../../lib/focus-leaving";
 import type { Asset } from "../../services/asset.service";
 import { useStore } from "../../stores/context";
 
-/** The icon of each kind of attachment: a type's, no preview (M7/P4 design 2). */
+/**
+ * The icon of each kind of attachment: a type's, no preview (M7/P4 design 2). None a page's or a source's: a PDF's
+ * FileType, another file's a paperclip (M13 closeout, decision 969).
+ */
 const icons: Record<AssetKind, LucideIcon> = {
   image: FileImage,
   audio: FileAudio,
   video: FileVideo,
-  pdf: FileText,
-  file: File,
+  pdf: FileType,
+  file: Paperclip,
 };
 
-/** AssetIcon is the icon of the kind of an attachment of type mime, for the eye alone: the trash's preview shows it too. */
-export function AssetIcon({ mime }: { mime: string }) {
-  const Icon = icons[assetKind(mime)];
-  return <Icon aria-hidden className="size-4 shrink-0 text-muted-foreground" />;
+/**
+ * AssetIcon is the icon of the kind of an attachment of type mime, for the eye alone: the trash's preview and a search's
+ * hits show it too, in the faint grey of their own icons (M13/P5/S2, review B's P5B-N2); className places it. Of type
+ * unknown (mime undefined: a hit or a trash item without its attachment's record), another file's.
+ */
+export function AssetIcon({ mime, className }: { mime: string | undefined; className?: string }) {
+  const Icon = icons[mime === undefined ? "file" : assetKind(mime)];
+  return <Icon aria-hidden className={cn("size-4 shrink-0 text-faint", className)} />;
 }
 
 /**
@@ -115,10 +135,11 @@ export function AttachmentRow({
     ? { href: asset.content_url, target: "_blank", rel: "noopener noreferrer" }
     : { href: asset.download_url, download: asset.name };
   return (
+    // A card's row (M13/P5/S3, decision 933), its Actions shown as it is hovered or focused (revealClass).
     // oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- dragged into the editor; Copy embed is the keyboard's way
     <li
       ref={row}
-      className="flex items-center gap-2 px-3 py-2 text-sm"
+      className="group/row flex items-center gap-2.5 px-4 py-2.5 text-sm"
       draggable={link !== null || undefined}
       onDragStart={(event) => {
         if (link !== null) {
@@ -128,7 +149,7 @@ export function AttachmentRow({
       }}
     >
       <AssetIcon mime={asset.mime} />
-      {source && <FileText aria-hidden className="size-4 shrink-0 text-muted-foreground" />}
+      {source && <FileText aria-hidden className="size-4 shrink-0 text-faint" />}
       {/* A link drags itself: a drag from the name is the row's. */}
       <a
         ref={linkRef}
@@ -146,7 +167,9 @@ export function AttachmentRow({
         )}
         {inline && <NewTab />}
       </a>
-      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+      {/* Downloaded, not shown in a tab: marked so, for the eye (M5-polish 16.7's half; decision 933). */}
+      {!inline && <Download aria-hidden className="size-3.5 shrink-0 text-faint" />}
+      <span className="shrink-0 text-compact text-faint tabular-nums">
         {formatBytes(asset.byte_size, preferences.locale)}
       </span>
       <DropdownMenu>
@@ -155,7 +178,7 @@ export function AttachmentRow({
             type="button"
             data-actions-of={asset.id}
             aria-label={t("asset.actions", { name: asset.name })}
-            className="rounded p-1 text-muted-foreground hover:bg-accent"
+            className={cn("rounded-row p-1 text-muted-foreground hover:bg-hover hover:text-foreground", revealClass)}
           >
             <Ellipsis className="size-4" />
           </button>
@@ -189,7 +212,15 @@ export function AttachmentRow({
               <DropdownMenuItem onSelect={() => act("move", asset)}>{t("page.moveTo")}</DropdownMenuItem>
             </>
           )}
-          {deletable && <DropdownMenuItem onSelect={() => act("delete", asset)}>{t("page.delete")}</DropdownMenuItem>}
+          {deletable && (
+            <>
+              {/* Open and Download come first, always: the line sets Delete apart. */}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem tone="destructive" onSelect={() => act("delete", asset)}>
+                {t("page.delete")}
+              </DropdownMenuItem>
+            </>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
     </li>

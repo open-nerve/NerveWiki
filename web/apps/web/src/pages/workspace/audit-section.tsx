@@ -1,3 +1,4 @@
+import { ScrollText } from "lucide-react";
 import { observer } from "mobx-react-lite";
 import { useState } from "react";
 import useSWR from "swr";
@@ -6,6 +7,8 @@ import { useFollowRole } from "../../app/follow-role";
 import { memberWho } from "../../app/member-summary";
 import { NotLoaded } from "../../app/not-loaded";
 import { errorText } from "../../app/problem-messages";
+import { SettingsCard, SettingsSection } from "../../app/settings-page";
+import { EmptyState } from "../../components/empty-state";
 import { Button } from "../../components/ui/button";
 import { formatDateTime } from "../../i18n/format";
 import { useT, type Translate } from "../../i18n/i18n";
@@ -35,7 +38,8 @@ function sentence(event: NotebookAuditEvent, t: Translate): string {
  * the newest first (M3/P5 design 3.3): the first page, then Load more for
  * each page after it. A page that cannot be loaded says why beside the
  * button, which tries again; one refused as forbidden follows the role,
- * as the first page does (v0.1 design 13.2, item 18).
+ * as the first page does (v0.1 design 13.2, item 18). A group of the
+ * ownerless notebooks' page, its events a card's list (M13/P3/S2).
  */
 export const AuditSection = observer(function AuditSection({ workspace }: { workspace: Workspace }) {
   const audit = useAudit(workspace);
@@ -61,26 +65,27 @@ export const AuditSection = observer(function AuditSection({ workspace }: { work
   }
 
   return (
-    <section className="space-y-4">
-      <div className="max-w-2xl space-y-1">
-        <h2 className="text-lg font-semibold">{t("audit.title")}</h2>
-        <p className="text-sm text-muted-foreground">{t("audit.body")}</p>
-      </div>
+    <SettingsSection title={t("audit.title")}>
+      <p className="max-w-2xl px-0.5 text-sm text-muted-foreground">{t("audit.body")}</p>
       {audit.events === undefined ? (
         <NotLoaded error={error} retry={() => void mutate()} />
       ) : audit.events.length === 0 ? (
-        <p className="text-muted-foreground">{t("audit.none")}</p>
+        <SettingsCard>
+          <EmptyState icon={ScrollText} size="card">
+            {t("audit.none")}
+          </EmptyState>
+        </SettingsCard>
       ) : (
-        <ol aria-label={t("audit.title")} className="divide-y rounded-md border">
+        <SettingsCard ordered label={t("audit.title")}>
           {audit.events.map((event) => (
-            <li key={event.id} className="space-y-1 p-4">
-              <p className="break-words">{sentence(event, t)}</p>
+            <li key={event.id} className="space-y-1 px-4.5 py-3">
+              <p className="text-sm break-words">{sentence(event, t)}</p>
               <p className="text-sm text-muted-foreground">
                 <time dateTime={event.created_at}>{formatDateTime(event.created_at, preferences.locale)}</time>
               </p>
             </li>
           ))}
-        </ol>
+        </SettingsCard>
       )}
       {audit.events !== undefined && audit.nextCursor !== null && (
         <div className="flex flex-wrap items-center gap-3">
@@ -94,6 +99,6 @@ export const AuditSection = observer(function AuditSection({ workspace }: { work
           )}
         </div>
       )}
-    </section>
+    </SettingsSection>
   );
 });

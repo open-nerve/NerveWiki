@@ -1,14 +1,19 @@
+import { Trash2 } from "lucide-react";
 import { observer } from "mobx-react-lite";
 import { useId, useRef, useState } from "react";
 import { Link } from "react-router";
 import useSWR, { unstable_serialize, useSWRConfig } from "swr";
 
-import { useArrivalFocus, useRouteNotice } from "../../app/arrival";
+import { arrived, useArrivalFocus, useRouteNotice } from "../../app/arrival";
+import { ColumnTop } from "../../app/column-top";
 import { useDocumentTitle } from "../../app/document-title";
 import { writesNotebook } from "../../app/effective-role";
 import { useMounted } from "../../app/mounted";
 import { NotLoaded } from "../../app/not-loaded";
+import { listColumnClass, noteClass } from "../../app/page-classes";
 import { errorText } from "../../app/problem-messages";
+import { pageTitleClass, SettingsCard } from "../../app/settings-page";
+import { EmptyState } from "../../components/empty-state";
 import { Alert } from "../../components/ui/alert";
 import { useT } from "../../i18n/i18n";
 import { readPages } from "../../lib/read-pages";
@@ -28,6 +33,7 @@ import {
   refusedText,
   restoredOf,
   restoredText,
+  backgroundClass,
   RestoreButton,
   startedOf,
   TrashRow,
@@ -179,18 +185,19 @@ export const TrashPage = observer(function TrashPage() {
   const offered = writesNotebook(notebook) ? offeredOf(refused) : undefined;
   const now = Date.now();
   return (
-    <section className="space-y-4">
+    <section className={listColumnClass}>
+      <ColumnTop />
       <div className="space-y-1">
         <h1
           ref={heading}
           tabIndex={-1}
           aria-describedby={said === undefined ? undefined : status}
-          className="text-2xl font-semibold outline-none"
+          className={pageTitleClass}
         >
           {title}
         </h1>
-        <p className="text-sm text-muted-foreground">{t("trash.hint")}</p>
-        <p className="text-sm text-muted-foreground">{t("trash.purge")}</p>
+        <p className={noteClass}>{t("trash.hint")}</p>
+        <p className={noteClass}>{t("trash.purge")}</p>
       </div>
       {/* There before it says anything: a status that comes with its region is not always read. */}
       <output id={status} className="block text-sm empty:sr-only">
@@ -203,14 +210,16 @@ export const TrashPage = observer(function TrashPage() {
           text={t("trash.background", { name: offered.name })}
           restore={() => startItem(offered)}
           left={() => heading.current?.focus()}
+          // Named for the item, it breaks as its name does, a name of no space too (review B's P5B-M12).
+          className={backgroundClass}
         />
       )}
       {data === undefined ? (
         <NotLoaded error={error} retry={() => void mutate()} />
       ) : items.length === 0 ? (
-        <p className="text-muted-foreground">{t("trash.empty")}</p>
+        <EmptyState icon={Trash2}>{t("trash.empty")}</EmptyState>
       ) : (
-        <ul aria-label={title} className="divide-y rounded-md border">
+        <SettingsCard list label={title}>
           {items.map((item) => (
             <TrashRow
               key={item.id}
@@ -223,7 +232,7 @@ export const TrashPage = observer(function TrashPage() {
               now={now}
             />
           ))}
-        </ul>
+        </SettingsCard>
       )}
       {more.failure !== undefined && <Alert>{errorText(more.failure, t)}</Alert>}
       {cursor !== undefined && <LoadMoreButton more={more} label={t("trash.more")} />}
@@ -271,7 +280,7 @@ function SaidText({ said, home }: { said: Said; home: string }) {
   ) : (
     <>
       {t("trash.backgroundUnknown", { name: said.name })}{" "}
-      <Link to={jobs} className="underline underline-offset-4">
+      <Link to={jobs} state={arrived} className="underline underline-offset-4">
         {t("transfer.seeJobs")}
       </Link>
     </>

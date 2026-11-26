@@ -1,8 +1,29 @@
-import type { Page, Response } from "@playwright/test";
+import type { Locator, Page, Response } from "@playwright/test";
 
 import { answerTo } from "./browser";
 
-// The settings pages as a user works them (M1/P6 design 3.8).
+// The settings pages as a user works them (M1/P6 design 3.8), in the settings' mode, their directory the left column
+// (M13/P3/S1).
+
+/** A group of the settings' directory, by its navigation's name (M13/P3/S1, decision 817). */
+export function settingsGroup(page: Page, name: "Settings" | "Workspace settings" | "Notebook settings"): Locator {
+  return page.getByRole("navigation", { name, exact: true });
+}
+
+/** The directory's Back: "Back to name", or "Back" alone (decision 813). */
+export function settingsBack(page: Page, name?: string): Locator {
+  return page.getByRole("link", { name: name === undefined ? "Back" : `Back to ${name}`, exact: true });
+}
+
+/** The settings page's title, its h1: the page's name (decision 815). */
+export function settingsTitle(page: Page, name: string): Locator {
+  return page.getByRole("heading", { level: 1, name, exact: true });
+}
+
+/** Opens the settings of the notebook shown by the cog of its row in the left column (M13/P2/S2's "Settings of …"). */
+export async function openNotebookSettings(page: Page, notebook: string): Promise<void> {
+  await page.getByRole("link", { name: `Settings of ${notebook}`, exact: true }).click();
+}
 
 /** Fills the security page's password form of page, sends it, and resolves the status of its answer. */
 export async function changePasswordWith(page: Page, current: string, next: string): Promise<number> {

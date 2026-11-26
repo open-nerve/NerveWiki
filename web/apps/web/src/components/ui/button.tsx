@@ -4,27 +4,43 @@ import type { ComponentProps } from "react";
 import { cn } from "../../lib/cn";
 
 const buttonVariants = cva(
-  "inline-flex shrink-0 items-center justify-center gap-2 rounded-md text-sm font-medium whitespace-nowrap transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 aria-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden disabled:pointer-events-none disabled:opacity-50 aria-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/90",
-        outline: "border bg-background hover:bg-accent hover:text-accent-foreground",
-        ghost: "hover:bg-accent hover:text-accent-foreground",
+        // A transparent border: forced colours, which drop the ink fill, draw it (M13/P3/S1, decision 845).
+        default: "border border-transparent bg-primary text-primary-foreground hover:bg-primary/90",
+        outline: "border border-border bg-surface hover:hover-layer dark:bg-surface-2",
+        ghost: "text-muted-foreground hover:bg-hover hover:text-foreground",
         destructive:
-          "bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive dark:bg-destructive/60 dark:hover:bg-destructive/50",
+          "border border-destructive/35 bg-transparent text-destructive hover:bg-destructive/8 dark:hover:bg-destructive/10",
       },
+      // sm and icon-sm are the shell's 30px, its top right's and its search's (M13/P2, decision 773).
       size: {
-        default: "h-9 px-4 py-2",
+        default: "h-9 px-4",
+        sm: "h-7.5 px-3.25 text-compact",
         icon: "size-9",
+        "icon-sm": "size-7.5",
+      },
+      shape: {
+        default: "",
+        pill: "rounded-full",
       },
     },
-    defaultVariants: { variant: "default", size: "default" },
+    defaultVariants: { variant: "default", size: "default", shape: "default" },
   }
 );
 
+/**
+ * buttonClass is a button's classes merged, as Button has them: a link drawn as a button takes it (cva joins its
+ * variants' unmerged: rounded-lg and rounded-full both, the style sheet's order deciding; review B's P5B-I1).
+ */
+export function buttonClass(variants: VariantProps<typeof buttonVariants>, className?: string): string {
+  return cn(buttonVariants(variants), className);
+}
+
 type ButtonProps = ComponentProps<"button"> & VariantProps<typeof buttonVariants>;
 
-export function Button({ className, variant, size, type = "button", ...props }: ButtonProps) {
-  return <button type={type} className={cn(buttonVariants({ variant, size }), className)} {...props} />;
+export function Button({ className, variant, size, shape, type = "button", ...props }: ButtonProps) {
+  return <button type={type} className={buttonClass({ variant, size, shape }, className)} {...props} />;
 }

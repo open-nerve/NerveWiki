@@ -2,6 +2,10 @@ import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
+import { listColumnClass, noteClass, titleRowClass, titleTextClass } from "../../app/page-classes";
+import { pageTitleClass } from "../../app/settings-page";
+import { buttonClass } from "../../components/ui/button";
+import { cn } from "../../lib/cn";
 import { json, notebookJSON, type Answer } from "../../test/fakes";
 import { lintRoutes, type LintFacts } from "../../test/lint-server";
 import { assetNode, guide, install, linux, notes, pageNode, pageServer } from "../../test/page-server";
@@ -167,6 +171,13 @@ function rule(name: string) {
   if (section === null) throw new Error("a health rule needs its own section");
   return within(section);
 }
+
+test("arrived at, as from the drawer's Health icon, the title takes the focus, as the other places' do (decision 808)", async () => {
+  const fixture = healthServer();
+  renderApp([{ pathname: healthPath, state: { arrived: true } }], fixture.server.app);
+  const title = await screen.findByRole("heading", { level: 1, name: "Health" });
+  await waitFor(() => expect(document.activeElement).toBe(title));
+});
 
 test("a failed health summary explains the failure; Try again reads its nonempty results through the signed-in client", async () => {
   const user = userEvent.setup();
@@ -524,6 +535,11 @@ test("a capped rule shows its localized lower bound while displaying the given f
   expect(rule("Wanted pages").getByText("10,000+ issues")).toBeTruthy();
   expect(rule("Wanted pages").getAllByRole("listitem")).toHaveLength(5);
   expect(rule("Wanted pages").getByText("Missing e")).toBeTruthy();
+  // A rule with more to read: the note that each page checks the notebook as it is now, a list's note (M13/P5/S3,
+  // decision 932; review C's cxb).
+  expect(screen.getByText("Each page checks the current notebook. Results may change between pages.").className).toBe(
+    noteClass
+  );
 });
 
 test("the results output already exists while the summary is loading and stays for its announcement", async () => {
@@ -540,4 +556,37 @@ test("the results output already exists while the summary is loading and stays f
   );
   await waitFor(() => expect(output.textContent).toBe("8 checks completed."));
   expect(health().getByRole("status", { name: "Health results" })).toBe(output);
+});
+
+// M13/P5/S3 (decision 932): a list's page, in the 720px column; its title in a row with Recheck, a pill on its right;
+// its notes 13px and grey; its rules cards (list-rows.test.tsx has a rule's row), the clear ones' summary a group's
+// title. jsdom lays nothing out: these hold the classes, the look is in the screenshots (05-P5 7.4).
+test("the health page is a list's page: its title in a row with Recheck on its right, its notes and its clear checks' summary as a list's", async () => {
+  const user = userEvent.setup();
+  // The summary as the lint fake answers it, until a recheck is held.
+  const hold: { answer?: Answer; until?: Promise<Response> } = {};
+  const fixture = healthServer("llm_wiki", {
+    [summaryRoute]: (request) => hold.until ?? (hold.answer as Answer)(request),
+  });
+  hold.answer = lintRoutes(fixture.notebooks)[summaryRoute];
+  fixture.value.rules = { orphans: fixture.value.rules.orphans };
+  renderApp(healthPath, fixture.server.app);
+  const title = await screen.findByRole("heading", { level: 1, name: "Health" });
+  const computedAt = await screen.findByText("Computed at", { exact: false });
+
+  expect(title.closest("section")?.className).toBe(cn(listColumnClass, "min-w-0"));
+  expect(title.className).toBe(cn(pageTitleClass, titleTextClass));
+  expect(title.parentElement?.className).toBe(titleRowClass);
+  const recheck = health().getByRole("button", { name: "Recheck" });
+  expect(recheck.parentElement).toBe(title.parentElement);
+  expect(recheck.className).toBe(buttonClass({ variant: "outline", size: "sm", shape: "pill" }, "ms-auto"));
+  expect(computedAt.className).toBe(noteClass);
+  expect(screen.getByText(/have an outdated index/).className).toBe(noteClass);
+  expect(screen.getByText("No issues (7 checks)").className).toBe(
+    "cursor-pointer text-compact font-semibold text-muted-foreground"
+  );
+  // Rechecking, its note a list's too.
+  hold.until = new Promise(() => undefined);
+  await user.click(recheck);
+  expect((await screen.findByText("Rechecking health…")).className).toBe(noteClass);
 });

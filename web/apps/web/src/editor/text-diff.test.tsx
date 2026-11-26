@@ -95,6 +95,40 @@ describe("TextDiff", () => {
     expect(screen.queryByText(/末尾/)).toBeNull();
   });
 
+  // The page's editor reads in the reading's font (M13/P4/S3, decision 874); a comparison stays monospaced, in the
+  // editor's monospace at 13px, not the browser's generic one, Courier in Chromium, 16px in Firefox's Chinese
+  // (decision 909; review B's P4S3B-Q2).
+  test("is monospaced in the editor's monospace, 13px, its lines 1.6, as the editor's theme has them", () => {
+    const { container } = render(diff("a\nb\n", "a\nc\n"));
+    const content = container.querySelector(".cm-content");
+    const scroller = container.querySelector(".cm-scroller");
+    if (content === null || scroller === null) {
+      throw new Error("no comparison");
+    }
+    expect(getComputedStyle(content).lineHeight).toBe("1.6");
+    expect([getComputedStyle(scroller).fontFamily, getComputedStyle(scroller).fontSize]).toEqual([
+      "var(--nw-editor-mono)",
+      "13px",
+    ]);
+  });
+
+  // Its gutter, where merge marks the lines changed, is of the view's background, not CodeMirror's light one, a band
+  // in the dark (decision 910; review B's P4S3B-I1).
+  test("has its gutter on the view's background, unbordered, its text secondary", () => {
+    const { container } = render(diff("a\nb\n", "a\nc\n"));
+    const gutters = container.querySelector(".cm-gutters");
+    if (gutters === null) {
+      throw new Error("no gutter");
+    }
+    const style = getComputedStyle(gutters);
+    // jsdom reads transparent as the colour it is.
+    expect([style.backgroundColor, style.color, style.borderRightStyle]).toEqual([
+      "rgba(0, 0, 0, 0)",
+      "var(--muted-foreground)",
+      "none",
+    ]);
+  });
+
   test("marks the lines added and removed, counts the changes and the lines, and gives the legend", () => {
     const { container } = render(diff(`${lines}old\n`, `${lines}new\nmore\n`));
     expect(screen.getByText("1 处改动")).toBeDefined();

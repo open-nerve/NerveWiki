@@ -9,6 +9,7 @@ import { eventServer, withEvents } from "../../test/event-server";
 import { json, notebookJSON, problem, upgradeOf, workspaceJSON } from "../../test/fakes";
 import { bob, install, notes, pagePath, pageServer } from "../../test/page-server";
 import { renderApp } from "../../test/render";
+import { lockNote } from "../../test/lock-note";
 
 // Ticking a task item in the reading view (M5/P6 design 3.5), through the
 // app's enhancements as the composition root gives them.
@@ -408,7 +409,7 @@ test("a lock refusal does not take the focus from where the user went meanwhile"
   edit.focus();
   release?.();
 
-  await screen.findByText("Bob is editing this page.");
+  await screen.findByText(lockNote("Bob is editing this page."));
   expect(document.activeElement).toBe(edit);
 });
 

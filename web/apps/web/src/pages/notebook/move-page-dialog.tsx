@@ -156,7 +156,7 @@ const MoveForm = observer(function MoveForm({ notebook, page, onSend, cancel, mo
     <>
       <form ref={ref} noValidate onSubmit={onSubmit} className="space-y-4">
         {banner !== undefined && <Alert>{banner}</Alert>}
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           <Label htmlFor={ids.parent}>{t("page.moveParent")}</Label>
           <NativeSelect
             id={ids.parent}
@@ -164,12 +164,13 @@ const MoveForm = observer(function MoveForm({ notebook, page, onSend, cancel, mo
             aria-invalid={problems.parent !== undefined || undefined}
             aria-describedby={problems.parent === undefined ? undefined : `${ids.parent}-note`}
             onChange={(event) => choose(event.target.value)}
+            className="block"
           >
             <ParentOptions pages={pages} parents={parents} includeRoot={includeRoot} />
           </NativeSelect>
           <Problem id={`${ids.parent}-note`} text={problems.parent} />
         </div>
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           <Label htmlFor={ids.position}>{t("page.movePosition")}</Label>
           <NativeSelect
             id={ids.position}
@@ -177,6 +178,7 @@ const MoveForm = observer(function MoveForm({ notebook, page, onSend, cancel, mo
             aria-invalid={problems.position !== undefined || undefined}
             aria-describedby={problems.position === undefined ? undefined : `${ids.position}-note`}
             onChange={(event) => setPosition(event.target.value)}
+            className="block"
           >
             <option value="first">{t("page.moveFirst")}</option>
             {siblings.map((sibling) => (

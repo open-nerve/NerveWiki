@@ -183,4 +183,8 @@ test("AS6 (page): a download whose address expired is signed anew as it is click
   await signed;
   expect(Buffer.compare(readFileSync(await (await downloading).path()), Buffer.from(zipBytes))).toBe(0);
   await readAgain;
+  // The view read again is the route's still, its answer being fetched as the request went: the cell ending there
+  // closed the page under it, and the answer, disposed, failed the cell now and then (M13 closeout). The route's
+  // handlers finish, the page open, and the route goes; none is left to fail, nor an error to ignore.
+  await page.unrouteAll({ behavior: "wait" });
 });

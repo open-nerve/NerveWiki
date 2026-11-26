@@ -2,45 +2,39 @@ import { observer } from "mobx-react-lite";
 import { Outlet, useLocation } from "react-router";
 
 import { useDocumentTitle } from "../../app/document-title";
-import { NavItem } from "../../components/nav-item";
+import { notebookSections, sectionAt } from "../../app/settings-directory";
+import { ColumnTop } from "../../app/column-top";
+import { SettingsPage, settingsColumnClass } from "../../app/settings-page";
 import { useT } from "../../i18n/i18n";
+import { cn } from "../../lib/cn";
 import { useWorkspace } from "../workspace/workspace-layout";
 import { useNotebook } from "./notebook-layout";
 
-/** The notebook settings' pages, in the order the navigation lists them. */
-const sections = [
-  { path: "general", label: "notebookSettings.general" },
-  { path: "members", label: "notebookSettings.members" },
-  { path: "transfer", label: "notebookSettings.transfer" },
-] as const;
-
 /**
- * NotebookSettingsLayout is the navigation of a notebook's settings and the
- * page chosen, as a workspace's settings have theirs (M3/P4 design 3.4):
- * whoever sees the notebook comes in; only its admins change it.
+ * NotebookSettingsLayout is a notebook's settings page (M3/P4 design 3.4) in the settings' mode (M13/P3/S1): whoever
+ * sees the notebook comes in, only its admins change it; their directory is WorkspaceLayout's left column (decision
+ * 810); here the page chosen, keyed by its path, its h1 its name, taking the arrival focus as it mounts
+ * (SettingsPage, decision 815; M13/P3/S2). An address of no section (the index, as it goes to the first) has the
+ * upgrade's banner above its outlet, as a section's page has it above its title (M13/P4/S1, decision 892), in the
+ * same column, so that it does not move as the first page comes (decision 898); with no banner, nothing.
  */
 export const NotebookSettingsLayout = observer(function NotebookSettingsLayout() {
   const { slug } = useWorkspace();
   const notebook = useNotebook();
   const t = useT();
   const { pathname } = useLocation();
-  const shown = sections.find(({ path }) => pathname === `/${slug}/notebooks/${notebook.id}/settings/${path}`);
+  const shown = sectionAt(notebookSections, `/${slug}/notebooks/${notebook.id}/settings`, pathname);
   useDocumentTitle(shown && t(shown.label), t("notebookSettings.heading", { name: notebook.name }));
-  return (
-    <div className="max-w-4xl space-y-6">
-      <h1 className="text-2xl font-semibold break-words">{t("notebookSettings.heading", { name: notebook.name })}</h1>
-      <div className="flex flex-col gap-6 md:flex-row">
-        <nav aria-label={t("notebookSettings.title")} className="flex gap-1 md:w-40 md:shrink-0 md:flex-col">
-          {sections.map(({ path, label }) => (
-            <NavItem key={path} to={`/${slug}/notebooks/${notebook.id}/settings/${path}`}>
-              {t(label)}
-            </NavItem>
-          ))}
-        </nav>
-        <div className="min-w-0 flex-1">
-          <Outlet />
-        </div>
+  return shown === undefined ? (
+    <>
+      <div className={cn(settingsColumnClass, "empty:hidden")}>
+        <ColumnTop />
       </div>
-    </div>
+      <Outlet />
+    </>
+  ) : (
+    <SettingsPage key={shown.path} title={t(shown.label)}>
+      <Outlet />
+    </SettingsPage>
   );
 });

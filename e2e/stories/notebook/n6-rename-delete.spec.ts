@@ -12,6 +12,7 @@ import {
   workspaceNav,
 } from "../../fixtures/notebook-pages";
 import { createNotebook, deleteNotebook, getNotebook, updateNotebook } from "../../fixtures/notebooks";
+import { settingsGroup } from "../../fixtures/settings-pages";
 import { expect, test } from "../../fixtures/test";
 import { workspaceHeading } from "../../fixtures/workspace-pages";
 import { newTeam } from "../../fixtures/workspaces";
@@ -77,7 +78,8 @@ test("N6 (page): its admin renames the notebook, then deletes it once its name i
   const { status, renamed } = await renameNotebookWith(page, notebook.id, "  Plans 2027 ");
   expect(status).toBe(200);
   await expect(page.getByText("Saved.", { exact: true })).toBeVisible();
-  await expect.poll(() => notebookGroups(page, "Acme")).toEqual({ "Team notebooks": ["Plans 2027"] });
+  // The settings' directory names it as renamed (M13/P3/S1).
+  await expect(settingsGroup(page, "Notebook settings")).toContainText("Plans 2027");
   expect(renamed).toMatchObject({ id: notebook.id, name: "Plans 2027" });
   await expectNotebook(db, renamed, ownerId);
 

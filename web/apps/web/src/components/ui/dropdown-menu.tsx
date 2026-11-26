@@ -1,12 +1,17 @@
-import { Check } from "lucide-react";
+import { Check, ChevronRight } from "lucide-react";
 import { DropdownMenu as Primitive } from "radix-ui";
-import type { ComponentProps } from "react";
+import type { ComponentProps, KeyboardEvent } from "react";
 
 import { cn } from "../../lib/cn";
+import { swallowHeldKeys } from "./dialog";
 
 export const DropdownMenu = Primitive.Root;
 export const DropdownMenuTrigger = Primitive.Trigger;
 export const DropdownMenuRadioGroup = Primitive.RadioGroup;
+
+// A menu pops in from the side that opened it, and closes at once (M13/P1/S2; 00-M13 737). Its items' ring shows for
+// the keyboard alone (app/input-modality.ts, decision 760); with the pointer the highlight is its background. Forced
+// colours drop the ring and the background: a transparent outline, which they show, says where the focus is.
 
 export function DropdownMenuContent({ className, sideOffset = 4, ...props }: ComponentProps<typeof Primitive.Content>) {
   return (
@@ -14,7 +19,7 @@ export function DropdownMenuContent({ className, sideOffset = 4, ...props }: Com
       <Primitive.Content
         sideOffset={sideOffset}
         className={cn(
-          "z-50 min-w-32 overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md",
+          "z-50 min-w-[220px] origin-(--radix-dropdown-menu-content-transform-origin) overflow-hidden rounded-popover border border-border bg-popover p-1.25 text-popover-foreground shadow-popover data-[state=open]:animate-pop-in",
           className
         )}
         {...props}
@@ -23,30 +28,63 @@ export function DropdownMenuContent({ className, sideOffset = 4, ...props }: Com
   );
 }
 
-export function DropdownMenuItem({ className, ...props }: ComponentProps<typeof Primitive.Item>) {
+const item =
+  "relative flex h-8 cursor-default items-center gap-2.5 rounded-row text-row outline-none select-none focus:bg-active focus:text-foreground focus:ring-ring focus:ring-inset in-data-[modality=keyboard]:focus:ring-2 focus-visible:outline-hidden data-disabled:pointer-events-none data-disabled:opacity-50 [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-muted-foreground";
+
+/**
+ * pressedOnce has a key held on an item press it once (M13 closeout fix check 1, review B's M13CB-F1-M1). Radix
+ * presses an item on keydown, a repeat's too, unless the item's own handler, called first, prevents it: Enter held on
+ * a menu's button opened the menu, and its repeats pressed the first item, focused, the tree's New subpage making
+ * pages, an attachment's Open opening tabs. A repeat of Enter or Space presses nothing; a new press does. And the
+ * repeats of the press press nothing where the focus goes then, till the key is let go (swallowHeldKeys, decision
+ * 967): in the dialog the item opens they sent Rename's form, pressed Delete's Cancel and, in WebKit, sent Move's; on
+ * the menu's button, the menu closed by a choice, they opened it again (fix check 2, review C's M13CC-F2-M1, review
+ * A's M13CA-F2-N1).
+ */
+function pressedOnce(onKeyDown: ((event: KeyboardEvent<HTMLDivElement>) => void) | undefined) {
+  return (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Enter" || event.key === " ") {
+      if (event.repeat) {
+        event.preventDefault();
+      } else {
+        swallowHeldKeys();
+      }
+    }
+    onKeyDown?.(event);
+  };
+}
+
+type ItemProps = ComponentProps<typeof Primitive.Item> & {
+  /** destructive: the item deletes, in red. */
+  tone?: "destructive";
+};
+
+export function DropdownMenuItem({ className, tone, onKeyDown, ...props }: ItemProps) {
   return (
     <Primitive.Item
       className={cn(
-        "relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none focus:bg-accent focus:text-accent-foreground focus:ring-2 focus:ring-ring focus:ring-inset [&_svg]:size-4",
+        item,
+        "px-2.5",
+        tone === "destructive" && "text-destructive focus:text-destructive [&>svg]:text-destructive",
         className
       )}
+      onKeyDown={pressedOnce(onKeyDown)}
       {...props}
     />
   );
 }
 
-export function DropdownMenuRadioItem({ className, children, ...props }: ComponentProps<typeof Primitive.RadioItem>) {
+export function DropdownMenuRadioItem({
+  className,
+  children,
+  onKeyDown,
+  ...props
+}: ComponentProps<typeof Primitive.RadioItem>) {
   return (
-    <Primitive.RadioItem
-      className={cn(
-        "relative flex cursor-default items-center gap-2 rounded-sm py-1.5 pr-2 pl-8 text-sm outline-none select-none focus:bg-accent focus:text-accent-foreground focus:ring-2 focus:ring-ring focus:ring-inset [&_svg]:size-4",
-        className
-      )}
-      {...props}
-    >
+    <Primitive.RadioItem className={cn(item, "pr-2.5 pl-8", className)} onKeyDown={pressedOnce(onKeyDown)} {...props}>
       <span className="absolute left-2 flex size-3.5 items-center justify-center">
         <Primitive.ItemIndicator>
-          <Check />
+          <Check className="size-3.5" />
         </Primitive.ItemIndicator>
       </span>
       {children}
@@ -54,10 +92,58 @@ export function DropdownMenuRadioItem({ className, children, ...props }: Compone
   );
 }
 
+// A submenu (M13/P2/S1, decision 773): the account's Appearance. Its trigger's arrow is a direct icon of the item, whose
+// [&>svg]: classes (0,1,1) would size and colour it as the item's own; [&>svg:last-child]: (0,2,1) makes it smaller and
+// fainter, tailwind-merge keeping both as different variants. A click opens it, the focus staying on its trigger; Enter,
+// Space and Right open it at its first item; Left and Escape close it, Escape the whole menu.
+
+export const DropdownMenuSub = Primitive.Sub;
+
+export function DropdownMenuSubTrigger({ className, children, ...props }: ComponentProps<typeof Primitive.SubTrigger>) {
+  return (
+    <Primitive.SubTrigger
+      className={cn(
+        item,
+        "px-2.5 data-[state=open]:bg-active [&>svg:last-child]:size-3.5 [&>svg:last-child]:text-faint",
+        className
+      )}
+      {...props}
+    >
+      {children}
+      <ChevronRight className="ml-auto" />
+    </Primitive.SubTrigger>
+  );
+}
+
+/**
+ * DropdownMenuSubContent is a submenu, 8px off the window's edges unless it says otherwise: Radix's 0 had the account
+ * row's Appearance, at the window's foot, cut by its bottom edge (M13/P2/S1; review B, S1B-M1).
+ */
+export function DropdownMenuSubContent({
+  className,
+  collisionPadding = 8,
+  ...props
+}: ComponentProps<typeof Primitive.SubContent>) {
+  return (
+    <Primitive.Portal>
+      <Primitive.SubContent
+        sideOffset={6}
+        collisionPadding={collisionPadding}
+        className={cn(
+          "z-50 min-w-[200px] origin-(--radix-dropdown-menu-content-transform-origin) overflow-hidden rounded-popover border border-border bg-popover p-1.25 text-popover-foreground shadow-popover data-[state=open]:animate-pop-in",
+          className
+        )}
+        {...props}
+      />
+    </Primitive.Portal>
+  );
+}
+
 export function DropdownMenuSeparator({ className, ...props }: ComponentProps<typeof Primitive.Separator>) {
-  return <Primitive.Separator className={cn("-mx-1 my-1 h-px bg-border", className)} {...props} />;
+  // A border, not a background: forced colours draw it (review B, S1B-N5).
+  return <Primitive.Separator className={cn("mx-1.5 my-1 h-0 border-t border-border", className)} {...props} />;
 }
 
 export function DropdownMenuLabel({ className, ...props }: ComponentProps<typeof Primitive.Label>) {
-  return <Primitive.Label className={cn("px-2 py-1.5 text-xs text-muted-foreground", className)} {...props} />;
+  return <Primitive.Label className={cn("px-2.5 py-1.5 text-xs text-faint", className)} {...props} />;
 }

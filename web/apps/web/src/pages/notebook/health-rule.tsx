@@ -2,6 +2,7 @@ import { observer } from "mobx-react-lite";
 import { useEffect, useLayoutEffect, useRef } from "react";
 import useSWR, { unstable_serialize } from "swr";
 
+import { factsClass } from "../../app/page-classes";
 import { errorText } from "../../app/problem-messages";
 import { Alert } from "../../components/ui/alert";
 import { useT, type PlainKey, type Translate } from "../../i18n/i18n";
@@ -60,6 +61,12 @@ function issueCount(
     ? t("health.oneIssue")
     : t("health.count", { count: new Intl.NumberFormat(locale).format(count) + (capped ? "+" : "") });
 }
+
+/**
+ * The summary of the disclosure clearText heads, a group's title as a list's page has it (M13/P5/S3, decision 932):
+ * the health page's, and an upgrade's check's and report's.
+ */
+export const clearSummaryClass = "cursor-pointer text-compact font-semibold text-muted-foreground";
 
 /** clearText heads the disclosure of the count checks that found no issues: one check, or how many. */
 export function clearText(t: Translate, count: number): string {
@@ -227,20 +234,30 @@ export const HealthRule = observer(function HealthRule({
   const title = t(text.title);
   const Heading = level === 3 ? "h3" : "h2";
   return (
+    // A card (decision 932): its title, its facts, then its items, a list's rows below a line.
     <section
       id={summary.rule}
       aria-labelledby={`${summary.rule}-heading`}
-      className="min-w-0 space-y-2 rounded-md border p-4"
+      className="min-w-0 space-y-2 rounded-card border border-border bg-surface px-4.5 py-4"
     >
-      <Heading ref={heading} id={`${summary.rule}-heading`} tabIndex={-1} className="font-semibold outline-none">
+      <Heading
+        ref={heading}
+        id={`${summary.rule}-heading`}
+        tabIndex={-1}
+        className="text-sm font-semibold outline-none"
+      >
         {title}
       </Heading>
-      <p className="text-sm text-muted-foreground">
+      {/* What it tells a screen reader not last: the margin space-y-2 gives all but the last child falls under no block
+          one sees, the card 17px above and below, More there or not (review B's P5S3B-M1); after the title, which a
+          screen reader entering the card reads first (review A's P5S3A-F1-N1). */}
+      <output className="sr-only">{card.told + (card.again ? String.fromCharCode(0xa0) : "")}</output>
+      <p className={factsClass}>
         {t(summary.rule === "orphans" && mode === "llm_wiki" ? "health.orphansDescriptionWiki" : text.description)}
       </p>
       <p className="text-sm">{issueCount(t, locale, summary)}</p>
       {card.items.length > 0 && (
-        <ul aria-label={title} className="divide-y">
+        <ul aria-label={title} className="divide-y divide-border border-t border-border">
           {card.items.map((item) => (
             <HealthItem
               key={item.item_key}
@@ -256,11 +273,10 @@ export const HealthRule = observer(function HealthRule({
           ))}
         </ul>
       )}
-      <output className="sr-only">{card.told + (card.again ? String.fromCharCode(0xa0) : "")}</output>
       {card.error !== undefined && <Alert>{errorText(card.error, t)}</Alert>}
       {card.cursor !== null && (
         <fieldset disabled={disabled}>
-          <LoadMoreButton more={more} label={t(card.error === undefined ? "health.more" : "status.retry")} />
+          <LoadMoreButton more={more} label={t(card.error === undefined ? "health.more" : "status.retry")} small />
         </fieldset>
       )}
     </section>

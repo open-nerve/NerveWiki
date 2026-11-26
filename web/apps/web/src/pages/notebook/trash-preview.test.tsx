@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { unstable_serialize, type Cache } from "swr";
 import { afterEach, expect, test, vi } from "vitest";
 
+import { arrived } from "../../app/arrival";
 import { eventHandlers, type EventHandler } from "../../events/handlers";
 import { appLinks } from "../../reading/app-links";
 import { taskToggle } from "../../reading/task-toggle";
@@ -11,6 +12,7 @@ import type { NotebookRole } from "../../services/notebook.service";
 import { eventServer, withEvents } from "../../test/event-server";
 import { json, notebookJSON, problem, workspaceJSON, type Answer } from "../../test/fakes";
 import { assetNode, guide, install, linux, notes, pagePath, pageServer } from "../../test/page-server";
+import { readText } from "../../test/read-text";
 import { renderApp } from "../../test/render";
 import type { FakeTrashItem } from "../../test/trash-server";
 
@@ -61,7 +63,7 @@ test("a page's preview shows where it was and what the trash says of it, and its
   expect(
     within(crumbs)
       .getAllByRole("link")
-      .map((link) => [link.textContent, link.getAttribute("href")])
+      .map((link) => [readText(link), link.getAttribute("href")])
   ).toEqual([
     ["Plans", home],
     ["Trash", trashPath],
@@ -230,6 +232,26 @@ test("a node no longer in the trash says so, with a way to it the tree has; a pa
   expect(document.activeElement).toBe(document.body);
   await user.click(await screen.findByRole("link", { name: "Open it" }));
   expect(await screen.findByRole("heading", { level: 1, name: "Install" })).toBe(document.activeElement);
+});
+
+// Back from the settings may come here (M13/P3/S1, decision 835): arrived at, the preview's title takes the focus, as
+// does the trash's that says the item is no longer in it.
+
+test("a preview arrived at gives its title the focus", async () => {
+  const { server } = trashed();
+  renderApp([{ pathname: previewPath(install.id), state: arrived }], server.app);
+
+  const title = await screen.findByRole("heading", { level: 1, name: "Install" });
+  await waitFor(() => expect(document.activeElement).toBe(title));
+});
+
+test("a preview arrived at, of a node no longer in the trash, gives the trash's title the focus", async () => {
+  const { server } = trashed();
+  server.restoreElsewhere(install.id);
+  renderApp([{ pathname: previewPath(install.id), state: arrived }], server.app);
+
+  expect(await screen.findByText("This is no longer in the trash.")).toBeTruthy();
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Trash" })));
 });
 
 test("an attachment no longer in the trash leads to where it is, its row taking the focus", async () => {
@@ -526,17 +548,17 @@ test("a restore refused on the preview of an item gone to from a node deleted wi
   expect(heading.getAttribute("aria-describedby")).toBe(refusal?.id);
 });
 
-// M8/P2B fix check 2 (v0.1 design 13.2, item 17): opened, not gone to from a node deleted with it since.
-test("a preview opened from the trash's list takes no focus", async () => {
+// M8/P2B fix check 2 (v0.1 design 13.2, item 17); M13/P5/S2 (decision 940): opened from the list, it is arrived at.
+test("a preview opened from the trash's list is arrived at, its title taking the focus", async () => {
   const user = userEvent.setup();
   const { server } = trashed();
   renderApp(trashPath, server.app);
 
   await user.click(await screen.findByRole("link", { name: "Install (From: Guide)" }));
 
-  await screen.findByRole("heading", { level: 1, name: "Install" });
-  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
-  expect(document.activeElement).toBe(document.body);
+  const title = await screen.findByRole("heading", { level: 1, name: "Install" });
+  // Waited for, as an arrival is (P5S2C-N2): the time it once gave the negative is no longer needed.
+  await waitFor(() => expect(document.activeElement).toBe(title));
 });
 
 // M8/P2B fix check 1, N2 (K5b): the item read again as a network would, after the refusal is said.
@@ -583,8 +605,10 @@ test("an item gone again, its preview shown again since, the reader elsewhere, l
   await waitFor(() => expect(events.streams).toHaveLength(1));
   events.last().hello();
   const tree = { workspace_id: workspaceJSON.id, notebook_id: notebookJSON.id, tree: true, pages: [] };
-  // Restored elsewhere as the reader is on its Restore: what replaces it takes the focus.
-  act(() => (screen.getByRole("button", { name: "Restore “Install” (From: Guide)" }) as HTMLElement).focus());
+  // Restored elsewhere as the reader is on its Restore: what replaces it takes the focus. The preview read first: the
+  // stream may connect before it is answered (M13/P2/S3 fix check 1, review C's S3C1-N1).
+  const restore = await screen.findByRole("button", { name: "Restore “Install” (From: Guide)" });
+  act(() => restore.focus());
   server.restoreElsewhere(install.id);
   events.last().send("pages", tree);
   const gone = await screen.findByRole("heading", { level: 1, name: "Trash" });

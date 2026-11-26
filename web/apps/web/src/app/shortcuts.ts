@@ -1,11 +1,6 @@
 /** The keys of a key press that a shortcut reads. */
 type Keys = Pick<KeyboardEvent, "key" | "code" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey">;
 
-/** onMac tells whether the browser runs on macOS, where Mod is Cmd; elsewhere it is Ctrl. */
-export function onMac(platform = navigator.platform): boolean {
-  return /^mac/i.test(platform);
-}
-
 /**
  * isMod tells whether keys are Mod and the letter key alone (M4/P5 design
  * 3.10): Cmd on macOS, Ctrl elsewhere, with no other modifier. On a layout
@@ -35,7 +30,18 @@ function letterOf(keys: Keys): string | undefined {
   return /^[a-z]$/i.test(keys.key) ? keys.key.toLowerCase() : /^Key[A-Z]$/.exec(keys.code)?.[0].slice(3).toLowerCase();
 }
 
-/** dialogOpen tells whether a dialog is open: the page's own shortcuts then leave the keys to it. */
-export function dialogOpen(): boolean {
-  return document.querySelector('[role="dialog"], [role="alertdialog"]') !== null;
+/** composing tells whether a key press ends or goes into an IME's composition: Safari's Enter after it has 229. */
+export function composing(event: Pick<KeyboardEvent, "isComposing" | "keyCode">): boolean {
+  return event.isComposing || event.keyCode === 229;
+}
+
+/**
+ * dialogOpen tells whether a dialog is open: the page's own shortcuts then leave the keys to it. The drawer of a
+ * phone's width is one (M13/P2/S3), but not to the search's shortcuts, which focus the box inside it (besideDrawer).
+ */
+export function dialogOpen({ besideDrawer = false }: { besideDrawer?: boolean } = {}): boolean {
+  const dialogs = besideDrawer
+    ? '[role="dialog"]:not([data-shell]), [role="alertdialog"]'
+    : '[role="dialog"], [role="alertdialog"]';
+  return document.querySelector(dialogs) !== null;
 }

@@ -1,3 +1,4 @@
+import { Lock } from "lucide-react";
 import { reaction, when } from "mobx";
 import { observer } from "mobx-react-lite";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
@@ -6,7 +7,8 @@ import { useSWRConfig } from "swr";
 import { ConfirmDialog } from "../../app/confirm-dialog";
 import { useMounted } from "../../app/mounted";
 import { NotLoaded } from "../../app/not-loaded";
-import { dialogOpen, isMod, onMac } from "../../app/shortcuts";
+import { dialogOpen, isMod } from "../../app/shortcuts";
+import { onMac } from "../../lib/platform";
 import { Loading } from "../../components/loading";
 import { Button } from "../../components/ui/button";
 import { idleLimit } from "../../editor/idle-exit";
@@ -19,9 +21,11 @@ import { useAssets, usePageTree, useStore } from "../../stores/context";
 import type { PageEditing } from "../../stores/page-editing";
 import { useWorkspace } from "../workspace/workspace-layout";
 import { ConflictPanel } from "./conflict-panel";
+import type { OutlineBox } from "./edit-outline";
 import { EditLostBanner } from "./edit-lost-banner";
 import { EditorUploads } from "./editor-uploads";
 import { PageEditingBar } from "./page-editing-bar";
+import { useEditHeadSlots } from "./page-head";
 import { readView } from "./page-view";
 import { UnsavedGuard } from "./unsaved-guard";
 
@@ -54,6 +58,8 @@ type PageEditProps = {
   page: TreeNode;
   /** The edit, its session open: the view keeps it while mounted. */
   editing: PageEditing;
+  /** The edit's outline, which its editor tells and leads to its headings' lines (M13/P4/S3, decision 876). */
+  outline: OutlineBox;
   /** done is called once the edit is over: saved, its session ended, the reading view read again. */
   done(left: Left): void;
 };
@@ -90,9 +96,11 @@ type PageEditProps = {
  * and a banner says why in place of the bar; Mod+S does nothing, and
  * Mod+E is Back to reading, which asks first while changes are not saved.
  */
-export const PageEdit = observer(function PageEdit({ notebook, page, editing, done }: PageEditProps) {
+export const PageEdit = observer(function PageEdit({ notebook, page, editing, outline, done }: PageEditProps) {
   const { slug } = useWorkspace();
   const t = useT();
+  // The page's head's Save and Done, within the edit as its view is (decision 866).
+  const slots = useEditHeadSlots();
   const { mutate } = useSWRConfig();
   const pages = usePageTree(notebook);
   const assets = useAssets(notebook);
@@ -130,6 +138,15 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
     editing.keep();
     return () => editing.letGo();
   }, [editing]);
+
+  // The outline leads to the editor's headings while the edit is up; gone, it lists none.
+  useEffect(() => {
+    outline.reveal = (index) => editor.current?.reveal(index);
+    return () => {
+      outline.clear();
+      outline.reveal = undefined;
+    };
+  }, [outline]);
 
   useEffect(() => {
     if (conflict !== undefined && asked.current) {
@@ -253,9 +270,17 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
     // Where the focus was: the leave moves it only from there, or from within the edit, not from where the user went
     // meanwhile.
     const from = document.activeElement;
+    // Within the edit: its view, and its Save and Done in the page's head (M13/P4/S1, decision 866).
     const stayed = () => {
       const at = document.activeElement;
-      return at === null || at === document.body || at === from || view.current?.contains(at) === true;
+      return (
+        at === null ||
+        at === document.body ||
+        at === from ||
+        view.current?.contains(at) === true ||
+        slots.before?.contains(at) === true ||
+        slots.after?.contains(at) === true
+      );
     };
     // The embeds of the files pasted or dropped go in first, to be saved with the rest.
     const waited = current?.working() === true;
@@ -416,7 +441,14 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
     );
   }
   return (
-    <div ref={view} className="space-y-3">
+    <div ref={view} className="space-y-3.5">
+      {/* Under the title, as the mockup's .editbar: an edit lost has its banner instead (decision 867). */}
+      {lost === undefined && (
+        <p className="-mt-3 flex items-center gap-1.5 text-[12.5px] text-faint">
+          <Lock aria-hidden className="size-3.25 shrink-0" />
+          {t("page.editingNote")}
+        </p>
+      )}
       {lost === undefined ? (
         <PageEditingBar
           editing={editing}
@@ -487,6 +519,7 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
             },
           }}
           onChange={editing.changed}
+          outline={outline}
         />
       </Suspense>
       <UnsavedGuard unsaved={editing.unsaved} uploading={uploading} stay={back} />

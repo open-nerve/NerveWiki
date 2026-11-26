@@ -1,67 +1,161 @@
 @import "tailwindcss";
 @import "./reading/reading.css";
+/* The tests name classes no page uses: Tailwind is not to write their CSS. */
+@source not "./**/*.test.{ts,tsx}";
 
 /* dark: follows the dark class on <html>, which theme-init.js sets before the
    first paint and the app keeps in step with the theme preference. */
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* shadcn/ui's semantic colours: components use bg-background,
-   text-muted-foreground and the like, never a raw palette colour. */
+/* The design tokens (M13/P1/S1; 00-M13 4.1): components use their semantic
+   names, bg-surface, text-muted-foreground, shadow-popover and the like, never
+   a palette's colour nor a written value (v0.1 design 13.2 item 32). Colours
+   and shadows differ by theme: their values are in :root and .dark. */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-sidebar: var(--sidebar);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
+  --color-hover: var(--hover);
+  --color-active: var(--active);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
   --color-muted-foreground: var(--muted-foreground);
+  --color-faint: var(--faint);
   --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
+  --color-accent-soft: var(--accent-soft);
   --color-destructive: var(--destructive);
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
   --color-ring: var(--ring);
+  --color-overlay: var(--overlay);
+  --color-avatar: var(--avatar);
+  --color-avatar-foreground: var(--avatar-foreground);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
+  --shadow-popover: var(--elevation-popover);
+  --shadow-dialog: var(--elevation-dialog);
 }
 
+/* What is the same in either theme: the radii, the two sizes the interface
+   keeps using, the system's fonts (decision 752). */
+@theme {
+  --radius-row: 7px;
+  --radius-control: 9px;
+  --radius-popover: 12px;
+  --radius-card: 14px;
+  --radius-dialog: 16px;
+  --text-compact: 13px;
+  --text-row: 13.5px;
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+    "Noto Sans CJK SC", system-ui, sans-serif;
+  --font-mono: "SF Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* Menus and dialogs come in, a fade and a slight scale, the overlay a fade; they close at once, with no exit
+   (00-M13 737): a closing menu kept for its animation is a second menu as another opens. The scale is its own
+   property, as the dialogs' centring translate is (M13/P1/S2). */
+@theme {
+  --animate-pop-in: nw-pop-in 150ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-fade-in: nw-fade-in 150ms ease-out;
+  @keyframes nw-pop-in {
+    from {
+      opacity: 0;
+      scale: 0.97;
+    }
+  }
+  @keyframes nw-fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+}
+
+/* Asked for less motion, what pops in fades in: the variable the utility reads, not the class, which hangs under
+   data-[state=open]: (M13/P1/S2; 00-M13 4.1). */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --animate-pop-in: nw-fade-in 150ms ease-out;
+  }
+}
+
+/* A hover over what has a background of its own: layered on it, not in its place (M13/P1/S1, decision 757). */
+@utility hover-layer {
+  background-image: linear-gradient(var(--hover), var(--hover));
+}
+
+/* --accent is amber: it marks a state (checked, current, the focus) and fills
+   nothing that has text on it. --ring is the accent's: amber has one source. */
 :root {
   color-scheme: light;
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --muted-foreground: oklch(0.53 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --ring: oklch(0.556 0 0);
+  --radius: 0.5rem;
+  --background: #ffffff;
+  --foreground: #18191c;
+  --sidebar: #f5f5f6;
+  /* The account's round avatar, its letter only the eye reads; the same in either theme (M13/P2/S1, decision 772). */
+  --avatar: #3f8f74;
+  --avatar-foreground: #ffffff;
+  --surface: #ffffff;
+  --popover: #ffffff;
+  --popover-foreground: #18191c;
+  --surface-2: #f4f4f5;
+  --hover: rgb(15 16 20 / 4.5%);
+  --active: rgb(15 16 20 / 7.5%);
+  --border: #e7e7ea;
+  --border-strong: #d4d4d9;
+  --muted-foreground: #5f6168;
+  --faint: #91939b;
+  --primary: #18191c;
+  --primary-foreground: #ffffff;
+  /* A shade deeper than the mockup's #c58a22 (2.99:1 on white): under 3:1 against white Chromium draws a checked
+     box's tick and a radio's dot dark, from 3:1 white, as the mockup's; #c2871f is 3.10:1 (M13/P1/S2, decision 766).
+     Its tint stays. */
+  --accent: #c2871f;
+  --ring: var(--accent);
+  --accent-soft: rgb(197 138 34 / 12%);
+  --destructive: #d64545;
+  --overlay: rgb(16 17 20 / 32%);
+  --elevation-popover: 0 1px 2px rgb(0 0 0 / 4%), 0 10px 28px rgb(16 17 20 / 12%);
+  --elevation-dialog: 0 1px 2px rgb(0 0 0 / 4%), 0 24px 64px rgb(16 17 20 / 18%);
 }
 
 .dark {
   color-scheme: dark;
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --ring: oklch(0.556 0 0);
+  --background: #1a1b1e;
+  --foreground: #e8e8ea;
+  --sidebar: #141517;
+  --avatar: #3f8f74;
+  --avatar-foreground: #ffffff;
+  --surface: #212226;
+  --popover: #25262a;
+  --popover-foreground: #e8e8ea;
+  --surface-2: #25262a;
+  --hover: rgb(255 255 255 / 4.5%);
+  --active: rgb(255 255 255 / 8%);
+  --border: #2b2c31;
+  --border-strong: #3a3b41;
+  --muted-foreground: #a4a5ac;
+  --faint: #74767e;
+  --primary: #ececee;
+  --primary-foreground: #18191c;
+  --accent: #d9a84e;
+  --ring: var(--accent);
+  --accent-soft: rgb(217 168 78 / 14%);
+  --destructive: #ff7b7b;
+  --overlay: rgb(0 0 0 / 45%);
+  --elevation-popover: 0 0 0 1px rgb(255 255 255 / 6%), 0 14px 36px rgb(0 0 0 / 50%);
+  --elevation-dialog: 0 0 0 1px rgb(255 255 255 / 6%), 0 24px 64px rgb(0 0 0 / 60%);
 }
 
 @layer base {
   * {
     @apply border-border;
   }
-  /* What takes the focus shows it, 3:1 at least against the page in either theme (WCAG 1.4.11; M12/P2/S3). Controls
+  /* What takes the focus shows it: solid amber, 2px, shown from the keyboard only (M13/P1/S1; 00-M13 4.7). Controls
      that draw their own ring (outline-none) keep theirs; the reading view's and the editor's are their own. */
   :focus-visible {
     outline: 2px solid var(--ring);
@@ -69,5 +163,128 @@
   }
   body {
     @apply bg-background text-foreground antialiased;
+  }
+  /* Checked is amber; their focus is the outline above, 2px off them. Forced colours ignore it, the controls stay
+     the system's (M13/P1/S2; 00-M13 4.3). */
+  input[type="radio"],
+  input[type="checkbox"] {
+    accent-color: var(--accent);
+  }
+}
+
+@layer components {
+  /* NativeSelect's chevron, drawn by the app: two gradients, each a stroke of 1.2px across 5px, meeting at its point,
+     make the ∨ as wide and as fine as the mockup's 14px icon, its colour the faint text's in either theme (decision
+     753). Under forced colours the browser's own select comes back, its padding the 0.5rem it had (M13/P1/S2). */
+  .nw-select {
+    appearance: none;
+    padding-inline-end: 2rem;
+    background-image:
+      linear-gradient(
+        45deg,
+        transparent calc(50% - 0.6px),
+        var(--faint) calc(50% - 0.6px) calc(50% + 0.6px),
+        transparent calc(50% + 0.6px)
+      ),
+      linear-gradient(
+        135deg,
+        transparent calc(50% - 0.6px),
+        var(--faint) calc(50% - 0.6px) calc(50% + 0.6px),
+        transparent calc(50% + 0.6px)
+      );
+    background-position:
+      calc(100% - 16px) 55%,
+      calc(100% - 12px) 55%;
+    background-size: 5px 5px;
+    background-repeat: no-repeat;
+  }
+  @media (forced-colors: active) {
+    .nw-select {
+      appearance: auto;
+      padding-inline-end: 0.5rem;
+      background-image: none;
+    }
+  }
+  /* The search box's clear button, Chromium's and WebKit's (Firefox draws none), drawn in the palette: a 14px ×, a
+     mask over the faint text's colour, the text's under the pointer, in place of the browser's blue cross or grey
+     disc (decision 805; M13/P2/S3 review B, N3). The browser still shows it only with text in the box. Under forced
+     colours the system's text colour, which the mask is drawn in still (forced colours take a background away). */
+  .nw-search::-webkit-search-cancel-button {
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    margin-inline-start: 4px;
+    color: var(--faint);
+    background-color: currentColor;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M18 6 6 18M6 6l12 12'/%3E%3C/svg%3E")
+      center / contain no-repeat;
+  }
+  .nw-search::-webkit-search-cancel-button:hover {
+    color: var(--foreground);
+  }
+  @media (forced-colors: active) {
+    .nw-search::-webkit-search-cancel-button,
+    .nw-search::-webkit-search-cancel-button:hover {
+      forced-color-adjust: none;
+      color: CanvasText;
+    }
+  }
+  /* "Saved."'s check, drawn before its text, never in it: the output's text is what a screen reader and the tests read
+     (M13/P3/S1, decisions 823, 841). Amber marks the state, a 13px mask over the text's colour, as the search box's
+     clear button is drawn; under forced colours the system's text colour, which the mask is drawn in still. 1.5s
+     after the text shows the output fades out, the text kept. Each time the text is written its round turns
+     (SavedOutput), which names the other of two like keyframes: the fade starts again however soon after the
+     output was emptied (emptied and written between two style computations, Chromium and Firefox go on with the
+     animation as it was). */
+  .nw-saved:not(:empty) {
+    animation: nw-saved-out 300ms ease-in 1.5s forwards;
+  }
+  .nw-saved[data-round="1"]:not(:empty) {
+    animation-name: nw-saved-out-again;
+  }
+  .nw-saved:not(:empty)::before {
+    content: "";
+    flex: none;
+    width: 13px;
+    height: 13px;
+    color: var(--accent);
+    background-color: currentColor;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12 5 5 9-10'/%3E%3C/svg%3E")
+      center / contain no-repeat;
+  }
+  @media (forced-colors: active) {
+    .nw-saved:not(:empty)::before {
+      forced-color-adjust: none;
+      color: CanvasText;
+    }
+  }
+  /* The edit's "Saved." in the page's head, its check drawn before it, never in its text (00-M13 4.5.1; M13/P4/S1). */
+  .nw-edit-status[data-saved]::before {
+    content: "";
+    display: inline-block;
+    width: 13px;
+    height: 13px;
+    margin-inline-end: 5px;
+    vertical-align: -2px;
+    color: var(--accent);
+    background-color: currentColor;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12 5 5 9-10'/%3E%3C/svg%3E")
+      center / contain no-repeat;
+  }
+  @media (forced-colors: active) {
+    .nw-edit-status[data-saved]::before {
+      forced-color-adjust: none;
+      color: CanvasText;
+    }
+  }
+  @keyframes nw-saved-out {
+    to {
+      opacity: 0;
+    }
+  }
+  @keyframes nw-saved-out-again {
+    to {
+      opacity: 0;
+    }
   }
 }

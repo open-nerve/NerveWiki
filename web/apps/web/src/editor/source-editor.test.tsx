@@ -1,3 +1,4 @@
+import { openSearchPanel } from "@codemirror/search";
 import { EditorView, keymap } from "@codemirror/view";
 import { act as reactAct, render, screen } from "@testing-library/react";
 import { createRef, StrictMode, Suspense, type ReactNode } from "react";
@@ -5,6 +6,7 @@ import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 
 import { I18nProvider } from "../i18n/i18n";
 import type { Locale } from "../i18n/locale";
+import type { OutlineSink } from "./edit-outline";
 import { lockReadOnly } from "./lock-read-only";
 import {
   EditorClosed,
@@ -48,8 +50,13 @@ function sessionState() {
   };
 }
 
-/** The editor on content, its handle, its session, and what it told onChange, save, leave and tell. */
-function editor(content: string, extensions: readonly EditorExtension[] = [], wrap = (node: ReactNode) => node) {
+/** The editor on content, its handle, its session, and what it told onChange, save, leave and tell; its outline's. */
+function editor(
+  content: string,
+  extensions: readonly EditorExtension[] = [],
+  wrap = (node: ReactNode) => node,
+  outline?: OutlineSink
+) {
   const handle = createRef<SourceEditorHandle>();
   const onChange = vi.fn();
   const save = vi.fn(() => Promise.resolve());
@@ -64,6 +71,7 @@ function editor(content: string, extensions: readonly EditorExtension[] = [], wr
             ref={handle}
             content={content}
             context={context}
+            outline={outline}
             controls={{
               save,
               saving: () => false,
@@ -555,3 +563,182 @@ test("Tab indents; the content refers to the line that says how to move out; its
   expect(view().contentDOM.getAttribute("aria-label")).toBe("页面正文");
   expect(screen.getByText("Tab 键缩进。要离开编辑区，先按 Esc，再按 Tab。")).toBe(hint);
 });
+
+// The source editor as the page reads (M13/P4/S3, decisions 874, 889): its prose in the reading's font, its code,
+// tables and frontmatter in lines of their own, its marks faint. jsdom cascades the editor's style modules in the order
+// CodeMirror mounts them; it reads no var(), answering what is written.
+test("the editor's look wins over the editor's theme: its prose's font, its content's line 1.85, its lines' padding 26px, its caret amber", () => {
+  const { container } = editor("Text\n");
+  const content = container.querySelector(".cm-content");
+  const line = container.querySelector(".cm-line");
+  const scroller = container.querySelector(".cm-scroller");
+  if (content === null || line === null || scroller === null) {
+    throw new Error("no content");
+  }
+  // A comparison's monospace, which the editor's theme has (decision 909), is not the page's editor's.
+  expect(getComputedStyle(scroller).fontFamily).toBe("var(--font-sans)");
+  expect(getComputedStyle(content).lineHeight).toBe("1.85");
+  expect(getComputedStyle(line).paddingLeft).toBe("26px");
+  // The caret is the browser's: there is no drawn one (review B's R1-M1).
+  expect(getComputedStyle(content).caretColor).toBe("var(--accent)");
+  expect(container.querySelector(".cm-cursor")).toBeNull();
+});
+
+test("the editor has a fence's lines monospaced and a wiki link's marks faint", () => {
+  const { container } = editor("See [[Hub]].\n\n```\ncode\n```\n");
+  const lines = [...container.querySelectorAll(".cm-line")];
+  expect(lines.map((line) => line.classList.contains("nw-mono-line"))).toEqual([false, false, true, true, true, false]);
+  expect([...container.querySelectorAll(".nw-md-faint")].map((mark) => mark.textContent)).toEqual(["[[", "]]"]);
+  expect([...container.querySelectorAll(".nw-md-link")].map((mark) => mark.textContent)).toEqual(["Hub"]);
+});
+
+/** looks is an element's type as jsdom computes it: its size and weight. */
+const looks = (element: Element) => [getComputedStyle(element).fontSize, getComputedStyle(element).fontWeight];
+
+test("the editor draws the frontmatter as plain text: the line lezer reads there as a heading is not enlarged nor bold (decision 889)", () => {
+  // lezer reads the YAML's last line over the closing "---" as a setext heading, as it does the body's over a "---".
+  const { container } = editor("---\ntags: [a, b]\n---\n\nBody\n---\n");
+  const lines = container.querySelectorAll(".cm-line");
+  const heading = lines[4]?.querySelector("span");
+  const yaml = lines[1];
+  if (heading === null || heading === undefined || yaml === undefined) {
+    throw new Error("no lines");
+  }
+  // jsdom resolves the highlighting's 1.065em against the prose's 15.5px.
+  expect(looks(heading)).toEqual(["16.5075px", "630"]);
+  const spans = [...yaml.querySelectorAll("span")];
+  expect(spans.map((span) => span.textContent).join("")).toBe("tags: [a, b]");
+  expect(spans.map(looks)).toEqual(spans.map(() => looks(yaml)));
+  expect(looks(yaml)).toEqual(["13.5px", "400"]);
+});
+
+// Inline code in the code's type and size, 13.5px as a code line's (review B's P4S3B-M2): of the prose's 15.5px
+// 0.871em, of a monospaced line's 1em; a comparison, which sets no such size, has its text's.
+test("the editor's inline code is as large as its code lines: 0.871em in the prose, 1em in a table's line", () => {
+  const { container } = editor("Text `code` here.\n\n| `cell` |\n|---|\n");
+  const content = container.querySelector(".cm-content");
+  const table = container.querySelector(".nw-mono-line");
+  const codes = [...container.querySelectorAll(".cm-line span")].filter((span) =>
+    ["code", "cell"].includes(span.textContent ?? "")
+  );
+  if (content === null || table === null) {
+    throw new Error("no content");
+  }
+  // Of the heading's size out of a heading: --nw-heading is 1 (review A's P4S3A-F1-M1).
+  expect(codes.map((code) => getComputedStyle(code).fontSize)).toEqual([
+    "calc(var(--nw-editor-code, 1em) * var(--nw-heading, 1))",
+    "calc(var(--nw-editor-code, 1em) * var(--nw-heading, 1))",
+  ]);
+  expect(getComputedStyle(content).getPropertyValue("--nw-editor-code")).toBe("0.871em");
+  expect(getComputedStyle(table).getPropertyValue("--nw-editor-code")).toBe("1em");
+});
+
+// In a heading, inline code is as much larger as the heading is, as the reading view's (review A's P4S3A-F1-M1): the
+// heading's rule sets --nw-heading on the code's own span, which has both, monospace's rule after it.
+test("the editor's inline code in a heading grows with the heading: 1.29 in an h1, 1.065 in an h2, of the code's size", () => {
+  const { container } = editor("# Using `kubectl` now\n\n## Two `x`\n\n### Three `y`\n");
+  const codes = [...container.querySelectorAll(".cm-line span")].filter((span) =>
+    ["kubectl", "x", "y"].includes(span.textContent ?? "")
+  );
+  expect(
+    codes.map((code) => [getComputedStyle(code).fontSize, getComputedStyle(code).getPropertyValue("--nw-heading")])
+  ).toEqual([
+    ["calc(var(--nw-editor-code, 1em) * var(--nw-heading, 1))", "1.29"],
+    ["calc(var(--nw-editor-code, 1em) * var(--nw-heading, 1))", "1.065"],
+    ["calc(var(--nw-editor-code, 1em) * var(--nw-heading, 1))", ""],
+  ]);
+});
+
+/** forcedOutlines is the outline and its offset forced colours give element, by their rules: none, out of them. */
+function forcedOutlines(element: Element): string[][] {
+  const found: string[][] = [];
+  for (const style of document.querySelectorAll("style")) {
+    for (const media of style.sheet?.cssRules ?? []) {
+      if (media instanceof CSSMediaRule && media.media.mediaText === "(forced-colors: active)") {
+        for (const rule of media.cssRules) {
+          const focused = rule instanceof CSSStyleRule ? rule.selectorText.split(/,\s*/) : [];
+          if (
+            rule instanceof CSSStyleRule &&
+            focused.some((selector) => selector.endsWith(":focus-visible") && element.matches(selector.slice(0, -14)))
+          ) {
+            found.push([rule.style.outline, rule.style.outlineOffset]);
+          }
+        }
+      }
+    }
+  }
+  return found;
+}
+
+// The search panel's field as wide in every engine, its controls' focus shown in forced colours too, by a transparent
+// outline they draw (review B's P4S3B-F1-N1, review C's P4S3C-F1-N2; decision 910). jsdom matches no forced colours:
+// their rules are read.
+test("the search panel's fields are 10.5rem wide; its field and buttons focused have, in forced colours, a transparent outline", () => {
+  const { view } = editor("Text\n");
+  openSearchPanel(view());
+  const field = view().dom.querySelector(".cm-panel.cm-search .cm-textfield");
+  const button = view().dom.querySelector(".cm-panel.cm-search .cm-button");
+  if (field === null || button === null) {
+    throw new Error("no search panel");
+  }
+  // jsdom's 10.5rem, at 16px the rem.
+  expect(getComputedStyle(field).width).toBe("168px");
+  expect(getComputedStyle(field).outline).toBe("none");
+  expect([forcedOutlines(field), forcedOutlines(button)]).toEqual([
+    [["2px solid transparent", "2px"]],
+    [["2px solid transparent", "2px"]],
+  ]);
+});
+
+/** coloured is the text of the line's spans of each colour jsdom computes, by colour, in order. */
+function coloured(line: Element): Record<string, string> {
+  const by: Record<string, string> = {};
+  const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+    const colour = node.parentElement === null ? "" : getComputedStyle(node.parentElement).color;
+    by[colour] = (by[colour] ?? "") + (node.textContent ?? "");
+  }
+  return by;
+}
+
+// In a quote, the Markdown's marks and an address are faint as out of one, its text secondary (review B's P4S3B-N1).
+test("in a quote the marks of emphasis, a link's and code's, and an address are faint; its text secondary", () => {
+  const { container } = editor("> a **b** [x](https://x.test) `c`\n");
+  const line = container.querySelector(".cm-line");
+  if (line === null) {
+    throw new Error("no line");
+  }
+  expect(coloured(line)).toEqual({
+    "var(--faint)": ">****[](https://x.test)``",
+    "var(--muted-foreground)": " a b x c",
+  });
+});
+
+// The outline while the page is edited leads to a heading's line (M13/P4/S3, decision 876).
+test.each([
+  ["# One\n\nText\n\n## Two\n", 5, "## Two"],
+  // In a quote, the cursor at the line's start, before its mark (review A's R1-N3).
+  ["# One\n\nText\n\n> ## Quoted\n", 5, "> ## Quoted"],
+])(
+  "reveal puts the cursor at the start of the heading's line, scrolled to near the top, the editor focused: %j",
+  (content, line, text) => {
+    const told: string[][] = [];
+    const sink: OutlineSink = { upTo: 10, told: (listed) => void told.push(listed.map((heading) => heading.text)) };
+    const scrolled = vi.spyOn(EditorView, "scrollIntoView");
+    const { view, handle } = editor(content, [], undefined, sink);
+    expect(told.at(-1)?.length).toBe(2);
+    const dispatched = vi.spyOn(view(), "dispatch");
+
+    handle().reveal(1);
+    const { head } = view().state.selection.main;
+    expect(head).toBe(view().state.doc.line(line).from);
+    expect(view().state.doc.lineAt(head).text).toBe(text);
+    expect(document.activeElement).toBe(view().contentDOM);
+    expect(scrolled).toHaveBeenCalledWith(head, { y: "start", yMargin: 16 });
+    const effect = scrolled.mock.results.at(-1)?.value as unknown;
+    expect(dispatched.mock.calls.at(-1)?.[0]).toMatchObject({ effects: effect });
+    // Beyond those listed, nothing.
+    handle().reveal(2);
+    expect(view().state.selection.main.head).toBe(head);
+  }
+);

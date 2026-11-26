@@ -9,7 +9,7 @@ import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, getView, readContent, writeContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
-import { pageHeading, saveEdit, startEditing, wikiPagePath } from "../../fixtures/wiki-pages";
+import { editorContent, pageHeading, saveEdit, startEditing, wikiPagePath } from "../../fixtures/wiki-pages";
 import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 
 // L5, the editor's completion (M6 design 9; M6/P7 design 4, 5): after [[
@@ -124,21 +124,58 @@ test("L5 (page): [[ completes a page by its title and by an alias, # a tag; noth
   await expect.poll(() => completions(page)).toEqual([["project/alpha", "1 page"]]);
   // A screen reader hears the option's text and its detail apart.
   await expect(completion(page).getByRole("option", { name: "project/alpha, 1 page", exact: true })).toBeVisible();
-  // The selected option's detail reads against it, and the editor's frame and the option selected show where the
-  // focus is, against what is around them, in either theme (M12/P2/S3; M5-polish 12.4).
+  // The selected option's detail reads against it, and the editor's amber frame and the option selected show where
+  // the focus is, against what is around them, in either theme no fainter than they were (M13/P1/S1; 00-M13 4.7).
+  // Floors at what M13/P1/S1 measured, less 0.1, the light amber's at what M13/P1/S2 did once it was a shade deeper
+  // (decision 766): no colour is to fade by accident (00-M13 4.7). Measured on Chromium: light, the detail 5.281, the
+  // editor's frame and the view's link 3.098, the option selected and the menu's current item, their rings inset,
+  // 2.646; dark 4.849, 7.923, 5.476. The search panel's as M13/P4/S3 styled it (decision 910): light, the text of the
+  // field focused and a button's word 17.578, of the other field 15.992, a label 6.183; dark 12.987, 12.353, 12.353,
+  // 6.637.
+  const floors = {
+    light: {
+      detail: 5.18,
+      frame: 2.99,
+      selected: 2.54,
+      link: 2.99,
+      current: 2.54,
+      field: 17.47,
+      idle: 15.89,
+      button: 17.47,
+      label: 6.08,
+    },
+    dark: {
+      detail: 4.74,
+      frame: 7.82,
+      selected: 5.37,
+      link: 7.82,
+      current: 5.37,
+      field: 12.88,
+      idle: 12.25,
+      button: 12.25,
+      label: 6.53,
+    },
+  } as const;
   const completionShown = async (scheme: "light" | "dark") => {
     await setColorScheme(page, scheme);
     await expect(completion(page)).toBeVisible();
     const detail = await textContrast(completion(page).locator("[aria-selected] .cm-completionDetail"));
-    expect(detail.ratio, `${scheme} ${JSON.stringify(detail)}`).toBeGreaterThanOrEqual(4.5);
+    expect(detail.ratio, `${scheme} ${JSON.stringify(detail)}`).toBeGreaterThanOrEqual(floors[scheme].detail);
     const frame = await indicatorContrast(page.locator(".cm-editor.cm-focused"));
-    expect(frame.ratio, `${scheme} ${JSON.stringify(frame)}`).toBeGreaterThanOrEqual(3);
+    expect(frame.ratio, `${scheme} ${JSON.stringify(frame)}`).toBeGreaterThanOrEqual(floors[scheme].frame);
     const selected = await indicatorContrast(completion(page).locator("li[aria-selected]"));
-    expect(selected.ratio, `${scheme} ${JSON.stringify(selected)}`).toBeGreaterThanOrEqual(3);
+    expect(selected.ratio, `${scheme} ${JSON.stringify(selected)}`).toBeGreaterThanOrEqual(floors[scheme].selected);
   };
   await completionShown("light");
   await completionShown("dark");
   await setColorScheme(page, "light");
+  // Forced colours draw neither the option selected's background nor its ring: it has an outline inside it, which they
+  // draw (review B's P4S3B-M4).
+  await page.emulateMedia({ forcedColors: "active" });
+  const option = completion(page).locator("li[aria-selected]");
+  await expect(option).toHaveCSS("outline-style", "solid");
+  await expect(option).toHaveCSS("outline-offset", "-2px");
+  await page.emulateMedia({ forcedColors: "none" });
   await pick(page);
 
   // In inline code, between its backticks, nothing completes.
@@ -147,6 +184,42 @@ test("L5 (page): [[ completes a page by its title and by an alias, # a tag; noth
   await page.keyboard.type("[[Tar");
   await page.waitForTimeout(500);
   await expect(completion(page)).toHaveCount(0);
+
+  // The search panel (Mod+F) in the app's colours, light and dark, its field and buttons the app's (decision 910;
+  // review B's P4S3B-I1): what is typed in its field, the other field's, not focused, a button's word and a label read
+  // against what is under them; a button draws no picture of its own, which the measure would not see; the panel on
+  // the editor's background.
+  const search = page.locator(".cm-panel.cm-search");
+  const searchShown = async (scheme: "light" | "dark") => {
+    await setColorScheme(page, scheme);
+    const field = await textContrast(search.locator(".cm-textfield").first());
+    expect(field.ratio, `${scheme} ${JSON.stringify(field)}`).toBeGreaterThanOrEqual(floors[scheme].field);
+    const idle = await textContrast(search.locator(".cm-textfield").nth(1));
+    expect(idle.ratio, `${scheme} ${JSON.stringify(idle)}`).toBeGreaterThanOrEqual(floors[scheme].idle);
+    const button = search.locator(".cm-button").first();
+    await expect(button).toHaveCSS("background-image", "none");
+    const word = await textContrast(button);
+    expect(word.ratio, `${scheme} ${JSON.stringify(word)}`).toBeGreaterThanOrEqual(floors[scheme].button);
+    const label = await textContrast(search.locator("label").first());
+    expect(label.ratio, `${scheme} ${JSON.stringify(label)}`).toBeGreaterThanOrEqual(floors[scheme].label);
+    const backgrounds = await page
+      .locator(".cm-editor")
+      .evaluate((editor) =>
+        [editor, editor.querySelector(".cm-panels")].map((element) =>
+          element === null ? null : getComputedStyle(element).backgroundColor
+        )
+      );
+    expect(backgrounds[1], `${scheme} the panel's background`).toBe(backgrounds[0]);
+  };
+  await page.keyboard.press("ControlOrMeta+f");
+  await expect(search.locator(".cm-textfield").first()).toBeFocused();
+  await page.keyboard.type("Target");
+  await searchShown("light");
+  await searchShown("dark");
+  await setColorScheme(page, "light");
+  await page.keyboard.press("Escape");
+  await expect(search).toHaveCount(0);
+  await expect(editorContent(page)).toBeFocused();
 
   await saveEdit(page);
   expect((await readContent(api, pat, source.id)).content).toBe(written);
@@ -169,14 +242,23 @@ test("L5 (page): [[ completes a page by its title and by an alias, # a tag; noth
     await setColorScheme(page, scheme);
     await link.focus();
     const ring = await focusContrast(link);
-    expect(ring.ratio, `${scheme} ${JSON.stringify(ring)}`).toBeGreaterThanOrEqual(3);
+    expect(ring.ratio, `${scheme} ${JSON.stringify(ring)}`).toBeGreaterThanOrEqual(floors[scheme].link);
     await menu.focus();
     await page.keyboard.press("Enter");
     const item = page.getByRole("menuitem").first();
     await expect(item).toBeFocused();
     const current = await indicatorContrast(item);
-    expect(current.ratio, `${scheme} ${JSON.stringify(current)}`).toBeGreaterThanOrEqual(3);
+    expect(current.ratio, `${scheme} ${JSON.stringify(current)}`).toBeGreaterThanOrEqual(floors[scheme].current);
     await page.keyboard.press("Escape");
+    // Closed, the menu is gone at once, a frame later: it has no exit's animation, which would keep it mounted, a
+    // second menu as another opens (00-M13 737; M13/P1/S2).
+    const menus = await page.evaluate(
+      () =>
+        new Promise<number>((resolve) => {
+          requestAnimationFrame(() => resolve(document.querySelectorAll('[role="menu"]').length));
+        })
+    );
+    expect(menus, "menus a frame after Escape").toBe(0);
     await expect(item).toBeHidden();
   };
   await readingShown("light");

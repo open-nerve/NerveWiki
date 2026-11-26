@@ -43,7 +43,7 @@ export function PageMenu({
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button ref={trigger} variant="outline" size="icon" aria-label={t("page.menu")}>
+          <Button ref={trigger} variant="outline" size="icon-sm" shape="pill" aria-label={t("page.menu")}>
             <Ellipsis />
           </Button>
         </DropdownMenuTrigger>

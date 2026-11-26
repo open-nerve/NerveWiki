@@ -2,6 +2,8 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 
+import { filterBarClass, filterFieldClass, listColumnClass, stackedLinesClass } from "../../app/page-classes";
+import { cardClass, pageTitleClass } from "../../app/settings-page";
 import { eventHandlers } from "../../events/handlers";
 import type { Notebook, NotebookRole } from "../../services/notebook.service";
 import type { SearchHit, SearchPage, TreeNode } from "../../services/page.service";
@@ -103,6 +105,8 @@ test("the results list the names' hits, then the contents', each with its kind's
   expect(pageLink.querySelector("mark")?.className).toContain("nw-hit");
   expect(pageLink.querySelector("bdi")).not.toBeNull();
   expect(page?.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
+  // A page's icon, the tree's; an attachment's its kind's (M13 closeout, decision 969).
+  expect(page?.querySelector("svg")?.classList.contains("lucide-file")).toBe(true);
   expect(page?.textContent).toContain("Plans");
   expect(within(page as HTMLElement).getByTitle("Oct 5, 2026, 8:50 AM").textContent).toBe("1 hour ago");
   // Its content holds no hit: no excerpt.
@@ -111,6 +115,7 @@ test("the results list the names' hits, then the contents', each with its kind's
   const attachmentLink = within(attachment as HTMLElement).getByRole("link", { name: "数据库备份.pdf" });
   expect(marks(attachmentLink)).toEqual(["数据库"]);
   expect(attachment?.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
+  expect(attachment?.querySelector("svg")?.classList.contains("lucide-file-type")).toBe(true);
   expect(attachmentLink.getAttribute("href")).toBe(pagePath(install.id));
   expect(attachment?.textContent).toContain("Plans / Guide / Install");
   expect(attachment?.textContent).toContain("PDF · 1 KiB");
@@ -906,4 +911,56 @@ test("Where to look stepped through with the keys on the closed select searches 
   await waitFor(() => expect(hits()).toHaveLength(2));
   expect(router.state.location.search).toBe(`?q=${encodeURIComponent("检索")}`);
   expect(reads(server)).toHaveLength(before + 2);
+});
+
+// M13/P5/S2 (decisions 925, 928): a list's page: its title the settings' kind, Where to look in a bar of filters, the
+// hits rows of a card, each a row that offers what a row offers (group/row), its icon of the faint grey; with no search
+// asked, what to do said with an icon.
+test("the results are a list's page: its title the settings' kind, Where to look a filter of a bar, the hits a card's rows", async () => {
+  const server = searched();
+  renderApp(searchPath("数据库"), server.app);
+  const title = await heading("Search “数据库”");
+  const list = await screen.findByRole("list", { name: "Search results" });
+
+  expect(title.className).toBe(pageTitleClass);
+  expect(title.parentElement?.className).toBe(listColumnClass);
+  const where = screen.getByRole("combobox", { name: "Where to look" });
+  expect(where.parentElement?.className).toBe(filterFieldClass);
+  expect(where.parentElement?.parentElement?.className).toBe(filterBarClass);
+  // At most 16rem, as Who is (review B's P5S2B-N2).
+  expect(where.classList.contains("max-w-64")).toBe(true);
+  expect(where.classList.contains("max-w-full")).toBe(false);
+  expect(list.className).toBe(cardClass);
+  const [first] = hits() as HTMLElement[];
+  expect(first?.className).toBe(stackedLinesClass);
+  expect(first?.classList.contains("group/row")).toBe(true);
+  expect(first?.querySelector("svg")?.classList.contains("text-faint")).toBe(true);
+  // Each hit's icon, a page's and an attachment's, by its name's first line as the name wraps (P5S2B-M1).
+  for (const hit of hits()) {
+    expect([...(hit.querySelector("p svg")?.classList ?? [])]).toEqual(
+      expect.arrayContaining(["self-start", "mt-0.5"])
+    );
+  }
+  expect(statusLine().classList.contains("text-compact")).toBe(true);
+});
+
+test("an address without q says how to search with an icon", async () => {
+  renderApp("/lab/search", searched().app);
+  const said = await screen.findByText("Type what to find in the search box at the top, and press Enter.", {
+    selector: "p",
+  });
+  expect(said.previousElementSibling?.getAttribute("aria-hidden")).toBe("true");
+  expect(said.previousElementSibling?.querySelector("svg")).not.toBeNull();
+});
+
+// A hit of an attachment the search has no record of is another file's, a paperclip: File is a page's alone (M13
+// closeout, decision 969).
+test("a hit of an attachment without its record has another file's icon, not a page's", async () => {
+  const hit: SearchHit = { ...hitOf(notes), node: { ...hitOf(notes).node, kind: "asset", name: "scan.bin" } };
+  const answer: SearchPage = { data: [hit], next_cursor: null, count: { value: 1, kind: "exact" }, building: false };
+  renderApp(searchPath("scan"), searched({ "GET /api/v0/workspaces/lab/search": () => json(answer) }).app);
+
+  await screen.findByRole("list", { name: "Search results" });
+  const [row] = hits();
+  expect(row?.querySelector("p svg")?.classList.contains("lucide-paperclip")).toBe(true);
 });

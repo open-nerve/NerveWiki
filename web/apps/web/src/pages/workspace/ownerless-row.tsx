@@ -3,9 +3,11 @@ import { useState } from "react";
 
 import { ConfirmDialog } from "../../app/confirm-dialog";
 import { memberWho } from "../../app/member-summary";
+import { listRowClass, listTextClass, WholeParts } from "../../app/settings-page";
 import { Button } from "../../components/ui/button";
 import { formatBytes, formatDate } from "../../i18n/format";
 import { useT } from "../../i18n/i18n";
+import { cn } from "../../lib/cn";
 import { shortId } from "../../lib/twins";
 import type { OwnerlessNotebook } from "../../services/ownerless.service";
 import { useStore } from "../../stores/context";
@@ -37,7 +39,8 @@ type OwnerlessRowProps = {
  * ownerless, its last activity and its size. Take over goes out at once,
  * one at a time; Delete asks for the notebook's name first, as deleting a
  * notebook does. A twin shows the last six digits of its id, which its
- * controls and the deletion's title name it by too.
+ * controls and the deletion's title name it by too. A card's row, its two
+ * buttons outlined pills (M13/P3/S2, decision 838).
  */
 export const OwnerlessRow = observer(function OwnerlessRow({
   notebook,
@@ -72,18 +75,22 @@ export const OwnerlessRow = observer(function OwnerlessRow({
     t("ownerless.size", { size: formatBytes(notebook.size_bytes, locale) }),
   ];
   return (
-    <li className="flex flex-wrap items-center justify-between gap-4 p-4">
-      <div className="min-w-0 space-y-1">
-        <p className="font-medium break-words">{notebook.name}</p>
+    <li className={listRowClass}>
+      <div className={cn(listTextClass, "space-y-1")}>
+        <p className="text-sm font-medium break-words">{notebook.name}</p>
         {id !== undefined && <p className="text-sm text-muted-foreground">{t("ownerless.id", { id })}</p>}
-        <p className="text-sm break-all text-muted-foreground">
+        <p className="text-sm break-words text-muted-foreground">
           {t("ownerless.formerOwner", { name: memberWho(notebook.former_owner, t) })}
         </p>
-        <p className="text-sm text-muted-foreground">{details.join(" · ")}</p>
+        <p className="text-sm text-muted-foreground">
+          <WholeParts parts={details} />
+        </p>
       </div>
       <div className="flex items-center gap-2">
         <Button
           variant="outline"
+          size="sm"
+          shape="pill"
           disabled={sending}
           aria-label={t("ownerless.takeOverLabel", which)}
           onClick={() => void take()}
@@ -92,7 +99,7 @@ export const OwnerlessRow = observer(function OwnerlessRow({
         </Button>
         <ConfirmDialog
           trigger={
-            <Button variant="outline" aria-label={t("ownerless.deleteLabel", which)}>
+            <Button variant="outline" size="sm" shape="pill" aria-label={t("ownerless.deleteLabel", which)}>
               {t("ownerless.delete")}
             </Button>
           }

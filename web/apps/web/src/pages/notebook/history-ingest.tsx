@@ -1,7 +1,9 @@
 import { observer } from "mobx-react-lite";
 import { Link } from "react-router";
 
+import { lineLinkClass } from "../../app/page-classes";
 import { useT } from "../../i18n/i18n";
+import { cn } from "../../lib/cn";
 import type { Changeset } from "../../services/page.service";
 import { usePageTree, useStore } from "../../stores/context";
 import { nodeTarget } from "../node-target";
@@ -16,13 +18,18 @@ export function IngestMark({ count }: { count: number }) {
   return count > 0 ? <Mark>{t("history.ingest")}</Mark> : null;
 }
 
-/** API order is meaningful: a null occupies its preview position, without backfilling. */
+/**
+ * API order is meaningful: a null occupies its preview position, without backfilling. In its size and grey of the facts
+ * it is among (className: a history's row's; a changeset's page's, by their block), its links a row's (M13/P5/S2).
+ */
 export const IngestSources = observer(function IngestSources({
   changeset,
   limit,
+  className,
 }: {
   changeset: Pick<Changeset, "ingest_count" | "ingest_sources">;
   limit: 3 | 20;
+  className?: string;
 }) {
   const t = useT();
   const notebook = useNotebook();
@@ -34,8 +41,8 @@ export const IngestSources = observer(function IngestSources({
     changeset.ingest_count >= 10000 ? "10000+" : new Intl.NumberFormat(locale).format(changeset.ingest_count);
   const home = `/${slug}/notebooks/${notebook.id}`;
   return (
-    <div className="space-y-1 text-sm">
-      <p className="text-muted-foreground">{t("history.ingestCount", { count })}</p>
+    <div className={cn("space-y-1", className)}>
+      <p>{t("history.ingestCount", { count })}</p>
       <ul aria-label={t("history.ingestSources")} className="flex flex-wrap gap-x-3 gap-y-1">
         {changeset.ingest_sources.slice(0, limit).map((id, index) => {
           const target = id === null ? undefined : nodeTarget(pages, id);
@@ -46,7 +53,7 @@ export const IngestSources = observer(function IngestSources({
           return (
             <li key={id ?? `gone-${index.toString()}`} className="max-w-full min-w-0 [overflow-wrap:anywhere]">
               {target !== undefined && open !== undefined ? (
-                <Link to={open.to} state={open.state} className="underline underline-offset-4">
+                <Link to={open.to} state={open.state} className={lineLinkClass}>
                   <bdi>{target.path}</bdi>
                 </Link>
               ) : (

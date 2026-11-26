@@ -1,11 +1,15 @@
 import { observer } from "mobx-react-lite";
 import { useId, useRef, useState, type RefObject } from "react";
 import { Link, useParams } from "react-router";
-import useSWR, { unstable_serialize, useSWRConfig } from "swr";
+import useSWR, { unstable_serialize, useSWRConfig, type KeyedMutator } from "swr";
 
+import { arrived, useArrivalFocus } from "../../app/arrival";
+import { ColumnTop } from "../../app/column-top";
 import { useDocumentTitle } from "../../app/document-title";
 import { frozenByUpgrade, writesNotebook } from "../../app/effective-role";
 import { NotLoaded } from "../../app/not-loaded";
+import { docFactsClass, headActionsClass, noteClass } from "../../app/page-classes";
+import { SettingsCard } from "../../app/settings-page";
 import { errorText } from "../../app/problem-messages";
 import { sourceHistoryText } from "./duplicate-text";
 import { useNodeNavigate } from "../node-target";
@@ -13,6 +17,7 @@ import { Alert } from "../../components/ui/alert";
 import { formatDateTime } from "../../i18n/format";
 import { useT } from "../../i18n/i18n";
 import { isolate, Isolated } from "../../i18n/isolated";
+import { cn } from "../../lib/cn";
 import { idPattern } from "../../lib/ids";
 import { readPages } from "../../lib/read-pages";
 import { shortId, twinsOf } from "../../lib/twins";
@@ -24,6 +29,14 @@ import type { Press } from "../../stores/transfer.store";
 import { LoadMoreButton, readNext, useLoadMore } from "../load-more";
 import { NotFoundPage } from "../not-found";
 import { BreadcrumbTrail } from "../page/breadcrumbs";
+import {
+  docColumnClass,
+  docShellClass,
+  docTitleClass,
+  headCrumbsClass,
+  headRowClass,
+  PageColumn,
+} from "../page/page-layout";
 import { useWorkspace } from "../workspace/workspace-layout";
 import { ChangesetChangeRow } from "./changeset-change";
 import { byText, changesetName, clientText, countsText } from "./changeset-text";
@@ -59,13 +72,22 @@ type Said =
  * ChangesetPage is a changeset of a notebook's history (M8 design 4.7,
  * 4.13; M8/P3 design 4.3), by its id in the address: an address of no
  * changeset's id is no page, and is not read; nor is a changeset of
- * another notebook, or one not found.
+ * another notebook, or one not found. Each branch is in the column the
+ * changeset read is in, below its head's row, empty while there is none
+ * (PageColumn; M13/P5/S2, decisions 915, 951): the upgrade's banner at its
+ * top stays where it is as the changeset comes. The empty row is the trail
+ * alone for whoever reads it (decision 954): under an upgrade no one may
+ * undo, and an empty group of Undo change would lay out nothing.
  */
 export const ChangesetPage = observer(function ChangesetPage() {
   const notebook = useNotebook();
   const { changesetId = "" } = useParams();
   if (!idPattern.test(changesetId)) {
-    return <NotFoundPage />;
+    return (
+      <PageColumn>
+        <NotFoundPage />
+      </PageColumn>
+    );
   }
   // As the server writes it, which keys what is read of it: an undo's reads, by the id it answers, reach these
   // (M5-polish 23.19).
@@ -74,7 +96,38 @@ export const ChangesetPage = observer(function ChangesetPage() {
 });
 
 /**
- * ChangesetShell is the changeset found: where it is, under the history;
+ * ChangesetShell reads the changeset of the address (ChangesetRead, once
+ * it is read): while it is read, or if it cannot be, NotLoaded; a
+ * changeset of another notebook is no page of this one's, nor is one not
+ * found.
+ */
+const ChangesetShell = observer(function ChangesetShell({ notebook, id }: { notebook: Notebook; id: string }) {
+  const t = useT();
+  const pages = usePageTree(notebook);
+  const { data, error, mutate } = useSWR(["changeset", notebook.id, id], () => pages.changeset(id));
+  useDocumentTitle(data === undefined ? undefined : byText(data, t), t("history.title"), notebook.name);
+  // Found gone once shown (an undo refused as not found reads it again; SWR keeps the data read before), "Page not
+  // found" stands for it, its title taking the focus the page took with it, from no one (M12/P2/S1, 23.14).
+  const gone = error instanceof ApiError && error.status === 404;
+  if ((data !== undefined && data.notebook_id !== notebook.id) || gone) {
+    return (
+      <PageColumn>
+        <NotFoundPage replacing={gone && data !== undefined} />
+      </PageColumn>
+    );
+  }
+  if (data === undefined) {
+    return (
+      <PageColumn>
+        <NotLoaded error={error} retry={() => void mutate()} />
+      </PageColumn>
+    );
+  }
+  return <ChangesetRead notebook={notebook} id={id} data={data} mutate={mutate} />;
+});
+
+/**
+ * ChangesetRead is the changeset found: where it is, under the history;
  * its kind and who made it, from where, when it was made and last
  * written, why, what it undid and what undid it, each leading there, why
  * it can no longer be undone when the purge trimmed it, its counts; a
@@ -87,16 +140,28 @@ export const ChangesetPage = observer(function ChangesetPage() {
  * the background whose answer was lost reads the jobs again: the
  * account's revert of it that is its press's, if any. What a read finds
  * out late, once a later undo said what came of it, it does not say.
+ * Mounted once the changeset is read, its title there as it mounts: arrived
+ * at (the settings' Back, a job's link), the title takes the focus, the
+ * changeset read or not before (M13/P3/S1, decision 835; review A's M1).
  */
-const ChangesetShell = observer(function ChangesetShell({ notebook, id }: { notebook: Notebook; id: string }) {
+const ChangesetRead = observer(function ChangesetRead({
+  notebook,
+  id,
+  data,
+  mutate,
+}: {
+  notebook: Notebook;
+  id: string;
+  data: ChangesetDetail;
+  mutate: KeyedMutator<ChangesetDetail>;
+}) {
   const t = useT();
   const pages = usePageTree(notebook);
   const navigateNode = useNodeNavigate(pages);
   const transfers = useTransfers(notebook);
   const { slug } = useWorkspace();
   const { locale } = useStore().preferences;
-  const { data, error, mutate } = useSWR(["changeset", notebook.id, id], () => pages.changeset(id));
-  const heading = useRef<HTMLHeadingElement>(null);
+  const heading = useArrivalFocus<HTMLHeadingElement>();
   const me = useAccount().me.id;
   const [said, setSaid] = useState<Said>();
   // Each undo sent, and the last whose outcome the page says: what is found out of an undo is not said over what a
@@ -109,17 +174,6 @@ const ChangesetShell = observer(function ChangesetShell({ notebook, id }: { note
   const status = useId();
   const note = useId();
   const history = t("history.title");
-  useDocumentTitle(data === undefined ? undefined : byText(data, t), history, notebook.name);
-  // A changeset of another notebook is no page of this one's, nor is one not found. Found gone once shown (an undo
-  // refused as not found reads it again; SWR keeps the data read before), "Page not found" stands for it, its title
-  // taking the focus the page took with it, from no one (M12/P2/S1, 23.14).
-  const gone = error instanceof ApiError && error.status === 404;
-  if ((data !== undefined && data.notebook_id !== notebook.id) || gone) {
-    return <NotFoundPage replacing={gone && data !== undefined} />;
-  }
-  if (data === undefined) {
-    return <NotLoaded error={error} retry={() => void mutate()} />;
-  }
   const home = `/${slug}/notebooks/${notebook.id}`;
   const href = (changeset: string) => `${home}/history/${changeset}`;
   const writer = writesNotebook(notebook);
@@ -201,35 +255,21 @@ const ChangesetShell = observer(function ChangesetShell({ notebook, id }: { note
         void findStarted(reverted.press);
     }
   }
+  // Headed as a page is (decision 929): the trail and Undo change in the head's row, Undo change before the title as
+  // the page's Edit is; then, in the column, the title, its facts right under it, and the rest.
   return (
-    <div className="space-y-6">
-      <div className="space-y-2">
+    <div className={docShellClass}>
+      <div className={headRowClass}>
         <BreadcrumbTrail
+          className={headCrumbsClass}
           steps={[
             { key: "notebook", to: home, name: notebook.name },
             { key: "history", to: `${home}/history`, name: history },
           ]}
           current={changesetName(data, false, t, locale)}
         />
-        <h1
-          ref={heading}
-          tabIndex={-1}
-          aria-describedby={refused !== undefined ? note : said !== undefined ? status : undefined}
-          className="text-3xl font-semibold break-words outline-none"
-        >
-          {byText(data, t)}
-          {data.ingest_count > 0 && (
-            <>
-              {" "}
-              <IngestMark count={data.ingest_count} />
-            </>
-          )}
-        </h1>
-        <ChangesetFacts changeset={data} href={href} />
-      </div>
-      {!data.trimmed &&
-        (writer ? (
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        {!data.trimmed && writer && (
+          <div className={headActionsClass}>
             <RevertDialog
               notebook={notebook}
               changeset={data}
@@ -241,21 +281,45 @@ const ChangesetShell = observer(function ChangesetShell({ notebook, id }: { note
               }}
               done={done}
             />
-            {data.reverted_by.length > 0 && <p className="text-sm text-muted-foreground">{t("history.revertAgain")}</p>}
           </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            {t(frozenByUpgrade(notebook) ? "notebook.upgradeReadOnly" : "history.readersNote")}
-          </p>
-        ))}
-      {/* There before it says anything: a status that comes with its region is not always read. */}
-      <output id={status} className="block text-sm empty:sr-only">
-        {said !== undefined && <SaidText said={said} href={href} jobs={`${home}/settings/transfer`} />}
-      </output>
-      {refused !== undefined && (
-        <Alert id={note}>{sourceHistoryText(refused, pages, navigateNode) ?? errorText(refused, t)}</Alert>
-      )}
-      <ChangesetChanges notebook={notebook} id={id} heading={heading} />
+        )}
+      </div>
+      <div className={cn(docColumnClass, "space-y-4")}>
+        <ColumnTop />
+        <div>
+          <h1
+            ref={heading}
+            tabIndex={-1}
+            aria-describedby={refused !== undefined ? note : said !== undefined ? status : undefined}
+            className={docTitleClass}
+          >
+            {byText(data, t)}
+            {data.ingest_count > 0 && (
+              <>
+                {" "}
+                <IngestMark count={data.ingest_count} />
+              </>
+            )}
+          </h1>
+          <ChangesetFacts changeset={data} href={href} />
+        </div>
+        {!data.trimmed &&
+          (writer ? (
+            data.reverted_by.length > 0 && <p className={noteClass}>{t("history.revertAgain")}</p>
+          ) : (
+            <p className={noteClass}>
+              {t(frozenByUpgrade(notebook) ? "notebook.upgradeReadOnly" : "history.readersNote")}
+            </p>
+          ))}
+        {/* There before it says anything: a status that comes with its region is not always read. */}
+        <output id={status} className="block text-sm empty:sr-only">
+          {said !== undefined && <SaidText said={said} href={href} jobs={`${home}/settings/transfer`} />}
+        </output>
+        {refused !== undefined && (
+          <Alert id={note}>{sourceHistoryText(refused, pages, navigateNode) ?? errorText(refused, t)}</Alert>
+        )}
+        <ChangesetChanges notebook={notebook} id={id} heading={heading} />
+      </div>
     </div>
   );
 });
@@ -268,7 +332,7 @@ const ChangesetShell = observer(function ChangesetShell({ notebook, id }: { note
 function SaidText({ said, href, jobs }: { said: Said; href: (id: string) => string; jobs: string }) {
   const t = useT();
   const see = (revert: string) => (
-    <Link to={href(revert)} className="underline underline-offset-4">
+    <Link to={href(revert)} state={arrived} className="underline underline-offset-4">
       {t("history.revertSee")}
     </Link>
   );
@@ -316,7 +380,7 @@ function SaidText({ said, href, jobs }: { said: Said; href: (id: string) => stri
       return (
         <>
           {t("history.backgroundUnknown")}{" "}
-          <Link to={jobs} className="underline underline-offset-4">
+          <Link to={jobs} state={arrived} className="underline underline-offset-4">
             {t("transfer.seeJobs")}
           </Link>
         </>
@@ -336,11 +400,11 @@ function ChangesetFacts({ changeset, href }: { changeset: ChangesetDetail; href:
   const { locale } = useStore().preferences;
   const { reverts } = changeset;
   return (
-    <div className="space-y-1 text-sm">
-      <p className="break-words text-muted-foreground">
+    <div className={cn(docFactsClass, "space-y-1")}>
+      <p className="break-words">
         <Isolated {...isolate((name) => t("history.clientOf", { client: clientText(changeset.client, t, name) }))} />
       </p>
-      <p className="text-muted-foreground">
+      <p>
         {t("history.made", { time: formatDateTime(changeset.created_at, locale) })}
         {changeset.updated_at !== changeset.created_at && (
           <>
@@ -349,8 +413,9 @@ function ChangesetFacts({ changeset, href }: { changeset: ChangesetDetail; href:
           </>
         )}
       </p>
+      {/* What its author wrote is content, no fainter than an excerpt (review B's P5B-R1-M3). */}
       {changeset.message !== null && (
-        <p className="break-words">
+        <p className="text-sm break-words text-foreground">
           {t("history.messageOf")} <bdi>{changeset.message}</bdi>
         </p>
       )}
@@ -359,7 +424,7 @@ function ChangesetFacts({ changeset, href }: { changeset: ChangesetDetail; href:
           <p>{t("history.revertsPurged")}</p>
         ) : (
           <p>
-            <Link to={href(reverts.id)} className="break-words underline underline-offset-4">
+            <Link to={href(reverts.id)} state={arrived} className="break-words underline underline-offset-4">
               <Isolated
                 {...isolate((name) => t("history.reverts", { name: changesetName(reverts, false, t, locale, name) }))}
               />
@@ -370,14 +435,14 @@ function ChangesetFacts({ changeset, href }: { changeset: ChangesetDetail; href:
         <p className="flex flex-wrap gap-x-3">
           <span>{t("history.revertedBy")}</span>
           {changeset.reverted_by.map((revert) => (
-            <Link key={revert} to={href(revert)} className="underline underline-offset-4">
+            <Link key={revert} to={href(revert)} state={arrived} className="underline underline-offset-4">
               {t("history.revertLink", { id: shortId(revert) })}
             </Link>
           ))}
         </p>
       )}
       {changeset.trimmed && <p>{t("history.trimmedNote")}</p>}
-      <p className="text-muted-foreground">{countsText(changeset, t, locale)}</p>
+      <p>{countsText(changeset, t, locale)}</p>
       <IngestSources changeset={changeset} limit={20} />
     </div>
   );
@@ -431,7 +496,7 @@ const ChangesetChanges = observer(function ChangesetChanges({
   );
   return (
     <section className="space-y-3">
-      <ul aria-label={t("history.changes")} className="divide-y rounded-md border">
+      <SettingsCard list label={t("history.changes")}>
         {changes.map((change) => (
           <ChangesetChangeRow
             key={change.node.id}
@@ -442,7 +507,7 @@ const ChangesetChanges = observer(function ChangesetChanges({
             linkRef={change.node.id === more.focusing ? focused : undefined}
           />
         ))}
-      </ul>
+      </SettingsCard>
       {more.failure !== undefined && <Alert>{errorText(more.failure, t)}</Alert>}
       {cursor !== undefined && <LoadMoreButton more={more} label={t("history.moreChanges")} />}
     </section>

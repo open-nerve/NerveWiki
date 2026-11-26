@@ -1,89 +1,35 @@
 import { observer } from "mobx-react-lite";
-import { useState } from "react";
 
-import { DisplayNameForm } from "../../app/display-name-form";
+import { NameRow } from "../../app/name-row";
+import { SettingsCard, SettingsRow, SettingsSection } from "../../app/settings-page";
 import { useT } from "../../i18n/i18n";
-import { isLocale, locales } from "../../i18n/locale";
-import { useAccount, useStore } from "../../stores/context";
-import { isThemePreference, themePreferences } from "../../stores/preferences.store";
-
-/** ProfilePage shows the account's name and address, and this browser's preferences (M1/P6 design 3.3). */
-export function ProfilePage() {
-  return (
-    <div className="space-y-10">
-      <ProfileSection />
-      <PreferencesSection />
-    </div>
-  );
-}
-
-const ProfileSection = observer(function ProfileSection() {
-  const { me } = useAccount();
-  const t = useT();
-  const [saved, setSaved] = useState(false);
-  return (
-    <section className="max-w-md space-y-6">
-      <h2 className="text-lg font-semibold">{t("settings.profile")}</h2>
-      <DisplayNameForm
-        hint={t("profile.displayNameHint")}
-        submitLabel={t("profile.save")}
-        saved={() => setSaved(true)}
-        onEdit={() => setSaved(false)}
-        status={<output className="text-sm text-muted-foreground">{saved ? t("profile.saved") : ""}</output>}
-      />
-      <div className="space-y-1">
-        <h3 className="text-sm font-medium">{t("form.email")}</h3>
-        <p>{me.email}</p>
-        <p className="text-sm text-muted-foreground">{t("profile.emailHint")}</p>
-      </div>
-    </section>
-  );
-});
+import { useAccount } from "../../stores/context";
 
 /**
- * PreferencesSection chooses the theme and the language of this browser:
- * the same preferences as the top bar's menus, applied at once and kept on
- * the device, not on the server.
+ * ProfilePage shows the account's name and address (M1/P6 design 3.3) in a card (M13/P3/S1, decision 820): the name
+ * others see, saved as it is changed (NameRow), checked here only for being empty, as onboarding's step checks it;
+ * the e-mail address, which only the server's administrator changes, a value it shows. The page's h1 is its name; the
+ * theme and the language are a page of their own (AppearancePage).
  */
-const PreferencesSection = observer(function PreferencesSection() {
-  const { preferences } = useStore();
+export const ProfilePage = observer(function ProfilePage() {
+  const { account, me } = useAccount();
   const t = useT();
   return (
-    <section className="max-w-md space-y-6">
-      <div className="space-y-1">
-        <h2 className="text-lg font-semibold">{t("preferences.title")}</h2>
-        <p className="text-sm text-muted-foreground">{t("preferences.hint")}</p>
-      </div>
-      <fieldset className="space-y-2">
-        <legend className="mb-2 text-sm font-medium">{t("theme.label")}</legend>
-        {themePreferences.map((value) => (
-          <label key={value} className="flex items-center gap-2 text-sm">
-            <input
-              type="radio"
-              name="theme"
-              value={value}
-              checked={preferences.theme === value}
-              onChange={(event) => isThemePreference(event.target.value) && preferences.setTheme(event.target.value)}
-            />
-            {t(`theme.${value}`)}
-          </label>
-        ))}
-      </fieldset>
-      <fieldset className="space-y-2">
-        <legend className="mb-2 text-sm font-medium">{t("language.label")}</legend>
-        {locales.map(({ value, name }) => (
-          <label key={value} className="flex items-center gap-2 text-sm" lang={value}>
-            <input
-              type="radio"
-              name="locale"
-              value={value}
-              checked={preferences.locale === value}
-              onChange={(event) => isLocale(event.target.value) && preferences.setLocale(event.target.value)}
-            />
-            {name}
-          </label>
-        ))}
-      </fieldset>
-    </section>
+    <SettingsSection>
+      <SettingsCard>
+        <NameRow
+          current={me.display_name}
+          field="display_name"
+          label={t("account.displayName")}
+          description={t("profile.displayNameHint")}
+          autoComplete="nickname"
+          check={(name) => (name.trim() === "" ? "field.required" : undefined)}
+          save={(name) => account.update({ display_name: name })}
+          saveLabel={t("profile.save")}
+          savedLabel={t("profile.saved")}
+        />
+        <SettingsRow title={t("form.email")} description={t("profile.emailHint")} value={me.email} />
+      </SettingsCard>
+    </SettingsSection>
   );
 });

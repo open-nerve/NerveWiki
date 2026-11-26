@@ -4,6 +4,7 @@ import { expectVersions, type StoredVersion } from "../../fixtures/assert/page";
 import { displayNameOf, emailFor } from "../../fixtures/auth";
 import { failedToLoad } from "../../fixtures/browser";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
+import { expectFits } from "../../fixtures/narrow";
 import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, endSession, openSession, postRestore, readContent, writeContent } from "../../fixtures/pages";
@@ -92,7 +93,38 @@ test("HI2 (page): A restores an older version: the page shows it, its title focu
 
   await goto(page, versionPath(workspace.slug, notebook.id, notes.id, 1));
   await expect(main.getByRole("article", { name: "Version 1", exact: true })).toContainText("See Alpha.");
-  await main.getByRole("button", { name: "Restore this version", exact: true }).click();
+  // 320 wide, the version's title on one line, Restore in the head's row above it (decision 929; P4's handoff).
+  await page.setViewportSize({ width: 320, height: 800 });
+  const title = main.getByRole("heading", { level: 1, name: "Version 1", exact: true });
+  const lines = await title.evaluate(
+    (element) => element.getBoundingClientRect().height / parseFloat(getComputedStyle(element).lineHeight)
+  );
+  expect(lines).toBeLessThan(1.5);
+  const restore = main.getByRole("button", { name: "Restore this version", exact: true });
+  await expectFits(page, title, restore);
+  // Where they are, by their boxes, not by a font (05-lessons 6): Restore above the title, inside its cell of the
+  // head's row, clear of the trail (review C's P5S3C-M1; the host's, of review A's).
+  const placed = await restore.evaluate((button) => {
+    const trail = document.querySelector("main nav[aria-label='Breadcrumb']");
+    const cell = [...(trail?.parentElement?.children ?? [])].find((child) => child.contains(button));
+    // oxlint-disable-next-line unicorn/consistent-function-scoping -- serialized into the page: it stays in the body
+    const box = (element: Element | null | undefined) => {
+      const { left, right, top, bottom } = element?.getBoundingClientRect() ?? new DOMRect(NaN, NaN, NaN, NaN);
+      return { left, right, top, bottom };
+    };
+    return { button: box(button), cell: box(cell), trail: box(trail), title: box(document.querySelector("main h1")) };
+  });
+  expect(placed.button.bottom, "Restore's bottom, at most the title's top").toBeLessThanOrEqual(placed.title.top);
+  expect(placed.button.left, "Restore's left, in its cell").toBeGreaterThanOrEqual(placed.cell.left);
+  expect(placed.button.right, "Restore's right, in its cell").toBeLessThanOrEqual(placed.cell.right);
+  const crosses =
+    placed.button.left < placed.trail.right &&
+    placed.trail.left < placed.button.right &&
+    placed.button.top < placed.trail.bottom &&
+    placed.trail.top < placed.button.bottom;
+  expect(crosses, "Restore over the trail").toBe(false);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await restore.click();
   const dialog = restoreDialog(page, 1);
   await expect(dialog).toContainText("The page now → Version 1");
   // What the restore changes: the page now's line, struck out, for the version's.
@@ -110,7 +142,8 @@ test("HI2 (page): A restores an older version: the page shows it, its title focu
   await expect(main.getByRole("article", { name: "Notes", exact: true }).getByRole("link")).toHaveText("Alpha");
   const listed = versionsListed(page);
   await expect(listed).toHaveCount(3);
-  await expect(listed.first()).toContainText(`Current${displayNameOf(adminEmail)} · Restore`);
+  // Who wrote it, then its marks, after a space (M13/P5/S3, decision 943).
+  await expect(listed.first()).toContainText(`${displayNameOf(adminEmail)} · Restore Current`);
   expect(await readContent(api, pat, notes.id)).toMatchObject({ content: first, revision: 3 });
   await expectIndexedLinks(db, notes.id, [{ kind: "wikilink", property: null, target: "Alpha", resolved: alpha.id }]);
   const versions: StoredVersion[] = [

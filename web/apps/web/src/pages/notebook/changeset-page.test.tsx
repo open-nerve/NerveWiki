@@ -2,6 +2,8 @@ import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 
+import { arrived } from "../../app/arrival";
+import { docFactsClass, headActionsClass, noteClass } from "../../app/page-classes";
 import { eventHandlers } from "../../events/handlers";
 import type { NotebookRole } from "../../services/notebook.service";
 import { eventServer, withEvents } from "../../test/event-server";
@@ -9,7 +11,10 @@ import { json, notebookJSON, workspaceJSON, type Answer } from "../../test/fakes
 import { changesetId, created, deleted, moved, renamed, reordered, restored, wrote } from "../../test/history-server";
 import { assetNode, bob, guide, install, linux, notes, pageNode, pagePath, pageServer } from "../../test/page-server";
 import { readAgain } from "../../test/page-panel";
+import { readText } from "../../test/read-text";
 import { renderApp } from "../../test/render";
+import { cn } from "../../lib/cn";
+import { docTitleClass, headCrumbsClass, headRowClass } from "../page/page-layout";
 
 // A changeset's page (M8 design 4.7, 4.13; M8/P3 design 4.3).
 
@@ -73,6 +78,19 @@ const links = (name: string) =>
 const rowOf = (name: string, list?: string) =>
   nodes(list).find((row) => row.textContent?.startsWith(name)) as HTMLElement;
 
+// Arrived at, the changeset not read yet (the settings' Back, a job's row of S2): its title, drawn once the changeset
+// is read, takes the focus then, not the body (M13/P3/S1, decision 835; review A's M1).
+test("a changeset arrived at before it is read gives its title the focus once it is", async () => {
+  const { server, rework } = reworked();
+  const { router } = renderApp(home, server.app);
+  await screen.findByRole("heading", { level: 1, name: "Plans" });
+
+  await act(() => router.navigate(changesetPath(rework.id), { state: arrived }));
+
+  const heading = await screen.findByRole("heading", { level: 1, name: "Edit · Ada" });
+  await waitFor(() => expect(document.activeElement).toBe(heading));
+});
+
 test("a changeset's page says what it was and who made it, from where, when it was made and last written, why, and its counts, under the history; its tab is named for it", async () => {
   const { server, rework } = reworked();
   renderApp(changesetPath(rework.id), server.app);
@@ -83,7 +101,7 @@ test("a changeset's page says what it was and who made it, from where, when it w
   expect(
     within(crumbs)
       .getAllByRole("link")
-      .map((link) => [link.textContent, link.getAttribute("href")])
+      .map((link) => [readText(link), link.getAttribute("href")])
   ).toEqual([
     ["Plans", home],
     ["History", `${home}/history`],
@@ -250,7 +268,9 @@ test("a revert says what it undid, leading there, or that the purge took it; wha
     [`Undo change, ID ${again.id.slice(-6)}`, changesetPath(again.id)],
     [`Undo change, ID ${undo.id.slice(-6)}`, changesetPath(undo.id)],
   ]);
-  expect(screen.getByText("Undone before: undoing it again succeeds only once that undo is undone.")).toBeTruthy();
+  expect(screen.getByText("Undone before: undoing it again succeeds only once that undo is undone.").className).toBe(
+    noteClass
+  );
   expect(screen.getByRole("button", { name: "Undo change" })).toBeTruthy();
 
   await act(() => router.navigate(changesetPath(undo.id)));
@@ -503,4 +523,177 @@ test("a node moved between two pages of another direction names where it was and
   ) as HTMLElement;
   expect([...said.querySelectorAll("bdi")].map((bdi) => bdi.textContent)).toEqual(["מדריך", "התקנה"]);
   expect(said.textContent).toBe("Moved from “מדריך” to “התקנה”");
+});
+
+// M13/P5/S2 (decision 929): the changeset's page is headed as a page is: its trail in the head's row, Undo change on
+// the row's right, before the title in the document; its title the page's 32px one, its facts right under it, one grey.
+test("a changeset's page is headed as a page is: Undo change in the head's row after the trail, before the title, a small pill; the dialog closed, it has the focus back", async () => {
+  const user = userEvent.setup();
+  const { server, rework } = reworked();
+  renderApp(changesetPath(rework.id), server.app);
+  const heading = await screen.findByRole("heading", { level: 1, name: "Edit · Ada" });
+  const undo = screen.getByRole("button", { name: "Undo change" });
+  const trail = screen.getByRole("navigation", { name: "Breadcrumb" });
+
+  expect(trail.compareDocumentPosition(undo)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  expect(undo.compareDocumentPosition(heading)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  // The trail and Undo change share the head's row; the title, in the column, has its facts right under it.
+  expect(trail.className).toBe(headCrumbsClass);
+  expect(trail.parentElement?.className).toBe(headRowClass);
+  expect(undo.parentElement?.className).toBe(headActionsClass);
+  expect(trail.parentElement?.contains(undo)).toBe(true);
+  expect(heading.className).toBe(docTitleClass);
+  expect((heading.nextElementSibling as HTMLElement).className).toBe(cn(docFactsClass, "space-y-1"));
+  // Its message is content, the body's colour, not the facts' grey (review B's P5B-R1-M3).
+  expect(heading.nextElementSibling?.querySelector("bdi")?.parentElement?.className).toBe(
+    "text-sm break-words text-foreground"
+  );
+  expect(heading.closest(".max-w-180")).not.toBeNull();
+  expect([...undo.classList]).toEqual(expect.arrayContaining(["h-7.5", "rounded-full"]));
+
+  await user.click(undo);
+  const dialog = await screen.findByRole("alertdialog", { name: "Undo this change?" });
+  await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+  await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+  expect(document.activeElement).toBe(undo);
+});
+
+test("a reader's note and a writer's Undone before are notes under the facts", async () => {
+  const { server, rework } = reworked("reader");
+  renderApp(changesetPath(rework.id), server.app);
+  const heading = await screen.findByRole("heading", { level: 1, name: "Edit · Ada" });
+  const note = screen.getByText("Editors and admins can undo this change.");
+
+  expect(heading.nextElementSibling?.compareDocumentPosition(note)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  expect(note.className).toBe(noteClass);
+  expect(screen.queryByRole("button", { name: "Undo change" })).toBeNull();
+});
+
+// M13/P5/S2 (decisions 946, 951, 954): on its way, not found, its address no changeset's, the changeset's column is
+// where the read page's is, below an empty row laid out as its head's row: the trail alone, for whoever reads it (no
+// one undoes under an upgrade, which alone has a banner to keep in its place). Each branch is a PageColumn of its own,
+// each held here (P5S2C-F1-N2).
+test.each([
+  ["on its way", "loading"],
+  ["not found", "missing"],
+  ["at an address of no changeset's id", "noId"],
+] as const)(
+  "a changeset %s lays its head's row out empty, the trail alone, as a reader's changeset read lays it",
+  async (_, branch) => {
+    const { server, rework } = reworked("reader");
+    const held = gateOf();
+    if (branch === "loading") {
+      server.historyWaits.changeset = held.promise;
+    }
+    const address = { loading: rework.id, missing: changesetId(9997), noId: "rework" }[branch];
+    renderApp(changesetPath(address), server.app);
+    const inside = await waitFor(() => {
+      const main = within(screen.getByRole("main"));
+      const found =
+        branch === "loading"
+          ? main.getByText("Loading…", { selector: "output" })
+          : main.getByRole("heading", { level: 1, name: "Page not found" });
+      expect(found.closest(".max-w-180")).not.toBeNull();
+      return found;
+    });
+    const empty = (inside.closest(".max-w-180")?.previousElementSibling ?? null) as HTMLElement | null;
+
+    expect({
+      hidden: empty?.getAttribute("aria-hidden"),
+      row: empty?.className,
+      text: empty?.textContent,
+      blocks: [...(empty?.children ?? [])].map((block) => block.className),
+    }).toEqual({ hidden: "true", row: headRowClass, text: "", blocks: [cn(headCrumbsClass, "h-[1lh] text-compact")] });
+    if (branch === "loading") {
+      // The changeset read: its head's row the same, its trail alone in it.
+      act(() => held.open());
+      const trail = await screen.findByRole("navigation", { name: "Breadcrumb" });
+      const row = trail.parentElement as HTMLElement;
+      expect(trail.className).toBe(headCrumbsClass);
+      expect(row.className).toBe(headRowClass);
+      expect(row.children).toHaveLength(1);
+    }
+  }
+);
+
+/** gateOf is a wait a test opens: what waits for its promise goes on once open is called. */
+function gateOf() {
+  let open!: () => void;
+  const promise = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  return { promise, open };
+}
+
+// M13/P5/S2 (decision 940): the links of the changeset's page to elsewhere arrive there, where the title takes the
+// focus: not the body.
+type Made = ReturnType<typeof reworked>;
+/** A link of the page's: the changeset its page shows, what is done there before it shows, the link. */
+type Leading = [
+  string,
+  (made: Made) => string,
+  ((user: ReturnType<typeof userEvent.setup>) => Promise<void>) | undefined,
+  () => HTMLElement,
+];
+
+/** undone has made's rework undone by Ada: the undo's id. */
+function undone({ server, rework }: Made): string {
+  const undo = server.log("undo", { kind: "revert", reverts: rework.id, at: "2026-10-05T08:10:00Z" });
+  rework.revertedBy = [undo.id];
+  return undo.id;
+}
+
+test.each<Leading>([
+  [
+    "See the undo",
+    ({ rework }) => rework.id,
+    async (user) => {
+      await user.click(await screen.findByRole("button", { name: "Undo change" }));
+      const dialog = await screen.findByRole("alertdialog", { name: "Undo this change?" });
+      await user.click(within(dialog).getByRole("button", { name: "Undo" }));
+      await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Undone. See the undo"));
+    },
+    () => within(screen.getByRole("status")).getByRole("link", { name: "See the undo" }),
+  ],
+  ["Undid “…”", (made) => undone(made), undefined, () => screen.getByRole("link", { name: /^Undid / })],
+  [
+    "Undo change, ID …, after Undone by:",
+    (made) => {
+      undone(made);
+      return made.rework.id;
+    },
+    undefined,
+    () => screen.getByRole("link", { name: /^Undo change, ID / }),
+  ],
+  [
+    "In the trash",
+    ({ rework }) => rework.id,
+    undefined,
+    () => within(rowOf("Old")).getByRole("link", { name: "In the trash: “Old”" }),
+  ],
+  [
+    "History of this node",
+    ({ rework }) => rework.id,
+    undefined,
+    () => within(rowOf("Install")).getByRole("link", { name: "History of this node: “Install”" }),
+  ],
+  [
+    "a content's version",
+    ({ rework }) => rework.id,
+    undefined,
+    () => within(rowOf("Install")).getByRole("link", { name: "Wrote its content: “Install”, version 1" }),
+  ],
+])("%s leads elsewhere arrived at, the title there taking the focus", async (_, shown, before, linkOf) => {
+  const user = userEvent.setup();
+  const made = reworked();
+  const { router } = renderApp(changesetPath(shown(made)), made.server.app);
+  await screen.findByRole("list", { name: "Nodes of this change" });
+  await before?.(user);
+
+  await user.click(linkOf());
+
+  await waitFor(() => expect(router.state.location.state).toEqual(arrived));
+  await waitFor(() =>
+    expect(document.activeElement).toBe(within(screen.getByRole("main")).getAllByRole("heading", { level: 1 })[0])
+  );
 });

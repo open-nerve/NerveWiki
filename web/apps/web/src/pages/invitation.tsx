@@ -3,15 +3,16 @@ import { useRef, useState, type FormEvent } from "react";
 import { useLocation, useNavigate, useParams } from "react-router";
 import useSWR from "swr";
 
-import { arrived } from "../app/arrival";
+import { arrived, useArrivalFocus } from "../app/arrival";
 import { useDocumentTitle } from "../app/document-title";
 import { useForm } from "../app/form";
-import { useSession } from "../app/guards";
 import { linkOf } from "../app/invitation-link";
 import { useMounted } from "../app/mounted";
 import { NotLoaded } from "../app/not-loaded";
+import { useSession } from "../app/session-state";
 import { SessionUnavailable } from "../app/session-unavailable";
 import { useSignOut } from "../app/sign-out";
+import { EntryCard, entryTitleClass } from "../components/entry-card";
 import { Loading } from "../components/loading";
 import { Alert } from "../components/ui/alert";
 import { Button } from "../components/ui/button";
@@ -27,6 +28,8 @@ import { CredentialsForm, signInProblems, signUpProblems } from "./credentials-f
  * workspace. Signing in, up or out only changes the session (v0.1 design
  * 13.2, rule 10): the next generation shows this page again, at the same
  * address, whose fragment holds the token, which never goes into a next.
+ * In the entry's card, under the product's name (M13/P5/S1, decision 920);
+ * signed in, the top right has Back to the workspace (Corner, decision 941).
  */
 export const InvitationPage = observer(function InvitationPage() {
   const { id = "" } = useParams();
@@ -34,11 +37,15 @@ export const InvitationPage = observer(function InvitationPage() {
   const t = useT();
   useDocumentTitle(t("invitation.title"));
   const link = linkOf(id, hash);
+  // Arrived at, from the settings' Back say, its title takes the focus (M13/P3/S1, decision 835).
+  const heading = useArrivalFocus<HTMLHeadingElement>();
   return (
-    <section className="mx-auto max-w-sm space-y-6">
-      <h1 className="text-2xl font-semibold">{t("invitation.title")}</h1>
+    <EntryCard>
+      <h1 ref={heading} tabIndex={-1} className={entryTitleClass}>
+        {t("invitation.title")}
+      </h1>
       {link === undefined ? <Alert>{t("problem.workspace.invitation_not_found")}</Alert> : <Invitation link={link} />}
-    </section>
+    </EntryCard>
   );
 });
 
@@ -58,6 +65,7 @@ const Invitation = observer(function Invitation({ link }: { link: InvitationLink
       next = <Loading />;
       break;
     case "unavailable":
+      // The page's one h1 is the invitation's (decision 922).
       next = <SessionUnavailable onRetry={() => void auth.retry()} />;
       break;
     case "signed-out":
@@ -70,7 +78,7 @@ const Invitation = observer(function Invitation({ link }: { link: InvitationLink
   return (
     <div className="space-y-6">
       <div className="space-y-1">
-        <p className="text-lg">{t("invitation.invites", { workspace: workspace.name })}</p>
+        <p className="text-sm">{t("invitation.invites", { workspace: workspace.name })}</p>
         <p className="text-sm text-muted-foreground">{t("invitation.role", { role: t(`role.${role}`) })}</p>
       </div>
       {next}

@@ -165,7 +165,6 @@ test("N9 (page): a workspace admin takes the ownerless notebook over: its left c
 
   await expect(page.getByRole("status")).toHaveText("Plans taken over. Open it");
   await expect(page.getByText("No ownerless notebooks.", { exact: true })).toBeVisible();
-  await expect.poll(() => notebookGroups(page, "Acme")).toEqual({ "Team notebooks": ["Plans"] });
   await expect
     .poll(() => auditLog(page))
     .toEqual([
@@ -174,6 +173,8 @@ test("N9 (page): a workspace admin takes the ownerless notebook over: its left c
   await page.getByRole("status").getByRole("link", { name: "Open it", exact: true }).click();
   await expect(notebookHeading(page, "Plans")).toBeVisible();
   await expect(page).toHaveURL(notebookPath(slug, plans.id));
+  // Out of the settings, the left column is the workspace's: Plans among the team's (M13/P3/S1).
+  await expect.poll(() => notebookGroups(page, "Acme")).toEqual({ "Team notebooks": ["Plans"] });
   await expectOwned(db, plans.id);
   await expectNotebookMember(db, plans.id, adminId, { role: "admin", active: true, writerId: adminId });
   await expectNotebookMember(db, plans.id, mateId, { role: "editor", active: true, writerId: ownerId });

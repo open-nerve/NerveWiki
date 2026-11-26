@@ -156,8 +156,16 @@ export const RevertDialog = observer(function RevertDialog({
         }
       }}
     >
+      {/* A small pill in the changeset's head's row, as a page's Edit is (M13/P5/S2, decision 929). */}
       <AlertDialogTrigger asChild>
-        <Button ref={trigger} variant="outline" aria-busy={out || undefined} aria-disabled={out || undefined}>
+        <Button
+          ref={trigger}
+          variant="outline"
+          size="sm"
+          shape="pill"
+          aria-busy={out || undefined}
+          aria-disabled={out || undefined}
+        >
           {t(out ? "history.reverting" : "history.undo")}
         </Button>
       </AlertDialogTrigger>
@@ -409,7 +417,9 @@ function RevertForm({
         error={problemOf("message")}
         onChange={(event) => setMessage(event.target.value)}
       />
-      <div className="flex justify-end gap-2">
+      {/* A line each, to the right, where one line holds not both: Cancel and Undo in the background at 320
+          (decision 958, extended). */}
+      <div className="flex flex-wrap justify-end gap-2">
         {/* Not disabled while it is out: a disabled button drops the focus (v0.1 design 13.2, item 12). The dialog
             does not close while it is out. */}
         <AlertDialogCancel asChild>

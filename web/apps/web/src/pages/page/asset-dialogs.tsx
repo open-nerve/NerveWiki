@@ -74,6 +74,7 @@ export function RenameAssetDialog({ notebook, asset, held }: AssetDialogProps) {
             explain={(error) => pagesLocked(error, t, me, (id) => distinctName(pages.tree, id, t))}
             saveLabel={t("page.save")}
             savedLabel={t("page.saved")}
+            cancelLabel={t("page.cancel")}
             onSaved={() => {
               done.current = true;
               held.onOpenChange(false);
@@ -218,7 +219,7 @@ const MoveAssetForm = observer(function MoveAssetForm({
     <>
       <form ref={ref} noValidate onSubmit={onSubmit} className="space-y-4">
         {banner !== undefined && <Alert>{banner}</Alert>}
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           <Label htmlFor={id}>{t("page.moveParent")}</Label>
           <NativeSelect
             id={id}

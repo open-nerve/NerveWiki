@@ -2,6 +2,10 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 
+import { revealClass } from "../../app/page-classes";
+import { cardClass } from "../../app/settings-page";
+import { buttonClass } from "../../components/ui/button";
+import { cn } from "../../lib/cn";
 import type { Asset } from "../../services/asset.service";
 import { archive, attachments, nodes, photo, rows } from "../../test/attachments";
 import { json, notebookJSON, problem } from "../../test/fakes";
@@ -50,6 +54,15 @@ test("a page's attachments are listed by name, each opening as it is served, wit
   ]).toEqual([`/api/v0/assets/${archive.id}/content?sig=1&download=1`, null, "data.zip"]);
   expect(section.textContent).toContain("1 KiB");
   expect(server.sent).toContain(`GET assets Guide`);
+  // Each kind its own icon, none a page's (M13 closeout, decision 969): a picture's, a PDF's FileType (not FileText, a
+  // source page's), another file's a paperclip (not File, a page's).
+  const iconOf = (name: string) =>
+    /\blucide-[\w-]+/.exec(
+      within(section).getByRole("link", { name }).closest("li")?.querySelector("svg")?.getAttribute("class") ?? ""
+    )?.[0];
+  expect(
+    ["data.zip", "manual.pdf (opens in a new tab)", "photo.png (opens in a new tab)", "README"].map(iconOf)
+  ).toEqual(["lucide-paperclip", "lucide-file-type", "lucide-file-image", "lucide-paperclip"]);
 });
 
 test("the notebook's home lists the attachments at its root", async () => {
@@ -94,7 +107,10 @@ test("without attachments, a reader sees no section; a writer sees its title, Up
   renderApp(pagePath(guide.id), writer.app);
   const section = await attachments();
   expect(within(section).getByRole("button", { name: "Upload" })).toBeDefined();
-  await within(section).findByText("Drop files here to upload them.");
+  // Faint, a hint's (M13/P5/S3, decision 933).
+  expect((await within(section).findByText("Drop files here to upload them.")).className).toBe(
+    "text-compact text-faint"
+  );
 });
 
 test("a list that cannot be read says why, and is read on Try again; read again, it shows what changed elsewhere", async () => {
@@ -153,6 +169,12 @@ test("a reader's menu opens, downloads and copies the embed; a writer's renames,
     "Move to…",
     "Delete",
   ]);
+  // Delete reads red, set apart from the others by a line, as nothing else does (M13/P1/S2).
+  const remove = screen.getByRole("menuitem", { name: "Delete" });
+  expect(remove.classList.contains("text-destructive")).toBe(true);
+  expect(remove.previousElementSibling?.getAttribute("role")).toBe("separator");
+  expect(within(screen.getByRole("menu")).getAllByRole("separator")).toHaveLength(1);
+  expect(screen.getByRole("menuitem", { name: "Rename" }).classList.contains("text-destructive")).toBe(false);
 });
 
 test("Copy embed copies the wikilink the server writes for it, its path where another attachment has its name, and says so", async () => {
@@ -379,6 +401,30 @@ test("Rename renames the stem: the extension shows after the field and stays", a
   expect(server.sent).toContain("PATCH photo.png to cover.png");
   await waitFor(() => expect(rows(section)).toContain("cover.png (opens in a new tab)"));
   expect(document.activeElement).toBe(within(section).getByRole("button", { name: "Actions for cover.png" }));
+});
+
+// The attachment's rename has the page's form: Cancel, then Save, to the right (M13 closeout, review B's M13CB-N1).
+test("the attachment's rename has Cancel, then Save; Cancel closes it, nothing sent, the focus back on the row's actions", async () => {
+  const user = userEvent.setup();
+  const server = pageServer({ nodes });
+  renderApp(pagePath(guide.id), server.app);
+  const section = await attachments();
+
+  await user.click(await actionsOf(section, "photo.png"));
+  await user.click(screen.getByRole("menuitem", { name: "Rename" }));
+  const dialog = await screen.findByRole("dialog", { name: "Rename photo.png" });
+  expect(
+    within(dialog)
+      .getAllByRole("button")
+      .map((button) => button.textContent)
+  ).toEqual(["Cancel", "Save"]);
+
+  await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(server.sent.some((line) => line.startsWith("PATCH"))).toBe(false);
+  await waitFor(() =>
+    expect(document.activeElement).toBe(within(section).getByRole("button", { name: "Actions for photo.png" }))
+  );
 });
 
 test("a rename refused stays in the dialog: an empty stem unsent, its extension said still; a name taken; pages being edited", async () => {
@@ -975,4 +1021,44 @@ test("a row taken away by the list read again, the focus elsewhere, leaves the f
 
   await waitFor(() => expect(rows(section)).not.toContain("photo.png (opens in a new tab)"));
   expect(document.activeElement).toBe(box);
+});
+
+// M13/P5/S3 (decisions 927, 933): the list a card of rows; an attachment downloaded marked so after its name, one the
+// browser shows not; its Actions what the row offers besides its link, transparent until the row is hovered or holds
+// the focus, or its menu is open. jsdom lays nothing out: these hold the classes, the look is in the screenshots, and
+// as1 sees Actions shown as its menu is open.
+test("the attachments are a card's rows: a download marked after its name, its Actions shown as its row is hovered or focused", async () => {
+  const server = pageServer({ nodes });
+  renderApp(pagePath(guide.id), server.app);
+  const section = await attachments();
+  const downloaded = await within(section).findByRole("link", { name: "data.zip" });
+  const opened = within(section).getByRole("link", { name: "photo.png (opens in a new tab)" });
+  const row = downloaded.parentElement as HTMLElement;
+
+  expect(row.parentElement?.className).toBe(cardClass);
+  expect(row.className).toBe("group/row flex items-center gap-2.5 px-4 py-2.5 text-sm");
+  // The download's icon after the name, before the size, for the eye alone; none for what opens in a tab.
+  const mark = downloaded.nextElementSibling;
+  expect(mark?.tagName.toLowerCase()).toBe("svg");
+  expect(mark?.getAttribute("aria-hidden")).toBe("true");
+  expect(mark?.getAttribute("class")).toContain("text-faint");
+  expect(mark?.nextElementSibling?.textContent).toMatch(/KiB|bytes|B$/);
+  expect(mark?.nextElementSibling?.className).toBe("shrink-0 text-compact text-faint tabular-nums");
+  expect(opened.nextElementSibling?.tagName.toLowerCase()).toBe("span");
+  expect(downloaded.textContent).toBe("data.zip");
+  const actions = within(row).getByRole("button", { name: "Actions for data.zip" });
+  expect(actions.className).toBe(
+    cn("rounded-row p-1 text-muted-foreground hover:bg-hover hover:text-foreground", revealClass)
+  );
+  expect([...actions.classList]).toEqual(
+    expect.arrayContaining(["opacity-0", "aria-expanded:opacity-100", "group-focus-within/row:opacity-100"])
+  );
+  // The section's look: its title as the subpages', Upload a small pill.
+  expect(within(section).getByRole("heading", { level: 2, name: "Attachments" }).className).toBe(
+    "text-sm font-medium text-muted-foreground outline-none"
+  );
+  expect(within(section).getByRole("button", { name: "Upload" }).className).toBe(
+    buttonClass({ variant: "outline", size: "sm", shape: "pill" })
+  );
+  expect(section.className).toBe("space-y-2 rounded-card");
 });

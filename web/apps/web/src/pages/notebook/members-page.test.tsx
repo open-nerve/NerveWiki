@@ -10,8 +10,18 @@ import { renderApp } from "../../test/render";
 // A notebook's members page: its members, adding them, leaving (M3/P4
 // design 3.4).
 
-const members = `/lab/notebooks/${notebookJSON.id}/settings/members`;
+const plansHome = `/lab/notebooks/${notebookJSON.id}`;
+const members = `${plansHome}/settings/members`;
+/** The workspace's navigation in the left column, out of the settings. */
 const nav = () => screen.findByRole("navigation", { name: "Lab" });
+/** The settings' directory's group of the notebook (M13/P3/S1). */
+const notebookGroup = () => screen.findByRole("navigation", { name: "Notebook settings" });
+
+/** Goes from the notebook's home to its members by its row's cog and the directory (M13/P3/S1). */
+async function toMembers(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole("link", { name: "Settings of Plans" }));
+  await user.click(within(await notebookGroup()).getByRole("link", { name: "Members" }));
+}
 const plans = `/api/v0/notebooks/${notebookJSON.id}`;
 
 /** The rows of the members list, each as its text. */
@@ -105,6 +115,10 @@ test.each([
     const link = within(note!).queryByRole("link", { name: "Take it over in Ownerless notebooks" });
     if (linked) {
       expect(link?.getAttribute("href")).toBe("/lab/settings/ownerless");
+      // The page left, the ownerless notebooks arrived at: their title takes the focus (M13/P3/S2, decision 839).
+      await userEvent.setup().click(link!);
+      const title = await screen.findByRole("heading", { level: 1, name: "Ownerless notebooks" });
+      await waitFor(() => expect(document.activeElement).toBe(title));
     } else {
       expect(link).toBeNull();
       expect(note?.textContent).toBe("This notebook has no admin. A workspace admin can take it over.");
@@ -203,15 +217,18 @@ test("a change of role refused says why above the list; the lists read again, th
 test("a member removed leaves the list, the focus on its heading; the notebook becomes the account's own", async () => {
   const user = userEvent.setup();
   const server = notebookServer();
-  renderApp(members, server.app);
+  renderApp(plansHome, server.app);
   await within(await nav()).findByRole("list", { name: "Team notebooks" });
+  await toMembers(user);
 
   await user.click(await screen.findByRole("button", { name: "Remove Bob (bob@example.com)" }));
   const dialog = await screen.findByRole("alertdialog", { name: "Remove Bob from Plans?" });
   await user.click(within(dialog).getByRole("button", { name: "Remove" }));
 
-  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Members" })));
+  // The page's h1, its name: the list's group has no title of its own (M13/P3/S2, decisions 815, 851).
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Members" })));
   expect(await rows()).toEqual(["AdaYouada@example.com · Joined Oct 1, 2026Admin"]);
+  await user.click(screen.getByRole("link", { name: "Back to Plans" }));
   expect(await within(await nav()).findByRole("list", { name: "My notebooks" })).toBeTruthy();
 });
 
@@ -224,11 +241,19 @@ async function candidates(): Promise<string[]> {
 test("an admin adds a member of the workspace not in the notebook yet, with a role", async () => {
   const user = userEvent.setup();
   const server = notebookServer({ members: [notebookMember(ada, "admin")] });
-  renderApp(members, server.app);
+  renderApp(plansHome, server.app);
   await within(await nav()).findByRole("list", { name: "My notebooks" });
+  await toMembers(user);
 
   expect(await candidates()).toEqual(["Choose a member", "Bob (bob@example.com)", "Cy (cy@example.com)"]);
   expect(screen.getByLabelText<HTMLSelectElement>("Role").value).toBe("editor");
+  // Below md the role's select is the form's whole width, as the member's is (M13 closeout, decision 970): it and its
+  // field's wrapper, which is as wide as its content otherwise. jsdom lays nothing out.
+  const role = screen.getByLabelText("Role");
+  expect([role.classList.contains("max-md:w-full"), role.parentElement?.classList.contains("max-md:w-full")]).toEqual([
+    true,
+    true,
+  ]);
   await user.selectOptions(screen.getByLabelText("Member"), "Cy (cy@example.com)");
   await user.selectOptions(screen.getByLabelText("Role"), "Reader");
   await user.click(screen.getByRole("button", { name: "Add" }));
@@ -242,6 +267,7 @@ test("an admin adds a member of the workspace not in the notebook yet, with a ro
   expect(await candidates()).toEqual(["Choose a member", "Bob (bob@example.com)"]);
   expect(screen.getByLabelText<HTMLSelectElement>("Member").value).toBe("");
   // Two members: the notebook is the team's now.
+  await user.click(screen.getByRole("link", { name: "Back to Plans" }));
   expect(await within(await nav()).findByRole("list", { name: "Team notebooks" })).toBeTruthy();
 });
 
@@ -373,7 +399,7 @@ test("leaving a notebook open to the workspace stays on it, with its role by the
   await waitFor(async () => expect(await rows()).toEqual(["Bobbob@example.com · Joined Oct 2, 2026Admin"]));
   expect(router.state.location.pathname).toBe(members);
   expect(screen.queryByRole("button", { name: "Leave notebook" })).toBeNull();
-  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Members" })));
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Members" })));
 });
 
 test.each([
@@ -396,7 +422,7 @@ test.each([
 
   expect((await within(dialog).findByRole("alert")).textContent).toBe(message);
   await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
-  expect(within(await nav()).getByRole("link", { name: "Plans" })).toBeTruthy();
+  expect((await notebookGroup()).textContent).toContain("Plans");
 });
 
 afterEach(() => vi.useRealTimers());
@@ -456,9 +482,12 @@ test("going from one notebook's members to another's lists the other's", async (
   );
   expect(await rows()).toHaveLength(1);
 
+  // Back to the workspace (opened at the address), to Atlas, its cog, its members (M13/P3/S1): the directory's
+  // workspace's group has a Members too (review C, P3C-N7).
+  await user.click(screen.getByRole("link", { name: "Back to Lab" }));
   await user.click(within(await nav()).getByRole("link", { name: "Atlas" }));
-  await user.click(await screen.findByRole("link", { name: "Notebook settings" }));
-  await user.click(await screen.findByRole("link", { name: "Members" }));
+  await user.click(await screen.findByRole("link", { name: "Settings of Atlas" }));
+  await user.click(within(await notebookGroup()).getByRole("link", { name: "Members" }));
 
   await waitFor(async () => expect(await rows()).toHaveLength(2));
 });
@@ -502,4 +531,25 @@ test("the members to add read again show who joined the workspace since", async 
   await waitFor(async () =>
     expect(await candidates()).toEqual(["Choose a member", "Cy (cy@example.com)", "Dee (dee@example.com)"])
   );
+});
+
+// The page's groups (M13/P3/S2, decisions 826, 851): the members first, untitled, the page's name saying it; the
+// addition its admins'; the leaving, an explicit member's, the danger zone's, last.
+test.each([
+  ["its admin", ["Add a member", "Danger zone"], [notebookMember(ada, "admin"), notebookMember(bob, "editor")], "none"],
+  ["its editor", ["Danger zone"], [notebookMember(ada, "editor"), notebookMember(bob, "admin")], "none"],
+  ["a reader by its access", [], [notebookMember(bob, "admin")], "viewer"],
+] as const)("the members page of %s: the members untitled, then %j", async (_, groups, listed, access) => {
+  renderApp(members, notebookServer({ access, members: [...listed] }).app);
+
+  const list = await screen.findByRole("list", { name: "Members" });
+  expect(list.closest("section")?.querySelector("h2")).toBeNull();
+  const main = within(screen.getByRole("main"));
+  await waitFor(() =>
+    expect(main.queryAllByRole("heading", { level: 2 }).map((heading) => heading.textContent)).toEqual(groups)
+  );
+  if ((groups as readonly string[]).includes("Danger zone")) {
+    const danger = within(main.getByRole("heading", { level: 2, name: "Danger zone" }).parentElement as HTMLElement);
+    expect(danger.getByRole("button", { name: "Leave notebook" })).toBeTruthy();
+  }
 });

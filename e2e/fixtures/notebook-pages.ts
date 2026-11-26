@@ -13,13 +13,28 @@ export function workspaceNav(page: Page, name: string): Locator {
   return page.getByRole("navigation", { name, exact: true });
 }
 
-/** The groups of notebooks the left column of the workspace named workspace shows: each one's names, by group. */
+/**
+ * The groups of notebooks the left column of the workspace named workspace shows: each one's names, by group. Each
+ * item's first link is its notebook's: the open notebook's item holds its row's link, then its tree's and its places'
+ * (M13/P2/S2). Each group is read in one call that never waits, none when its list is gone: a count and then a read
+ * that waits for the list, as M13/P2/S2's 485e6be3 had it, held a poll's predicate past the poll's timeout when the
+ * last notebook of a group went between the two, its list with it (CI run 45551442052, C8 [chromium]
+ * c8-stream-life.spec.ts:254). A group's name that more than one list answers to throws, as that read's strict
+ * locator did, rather than the last of them kept.
+ */
 export async function notebookGroups(page: Page, workspace: string): Promise<Record<string, string[]>> {
   const nav = workspaceNav(page, workspace);
   const groups = await Promise.all(
     ["My notebooks", "Team notebooks"].map(async (name) => {
-      const list = nav.getByRole("list", { name, exact: true });
-      return (await list.count()) === 0 ? [] : [[name, await list.getByRole("link").allTextContents()] as const];
+      const lists = await nav
+        .getByRole("list", { name, exact: true })
+        .evaluateAll((uls) => uls.map((ul) => [...ul.children].map((li) => li.querySelector("a")?.textContent ?? "")));
+      if (lists.length > 1) {
+        throw new Error(
+          `${lists.length} lists named "${name}" in the navigation of ${workspace}, where one was looked for`
+        );
+      }
+      return lists.map((items) => [name, items] as const);
     })
   );
   return Object.fromEntries(groups.flat());
@@ -81,12 +96,14 @@ export async function renameNotebookWith(
   return { status: response.status(), renamed: (await response.json()) as Notebook };
 }
 
-/** Chooses the access of the notebook id on its general page, as the page words it, and saves it; resolves the answer. */
+/**
+ * Chooses the access of the notebook id on its general page, as the page words it, which goes out as it is chosen
+ * (M13/P3/S2); resolves the answer. selectOption chooses as the pointer does and does not focus the select: a story
+ * that reads the focus focuses it first.
+ */
 export async function changeAccessWith(page: Page, id: string, access: string): Promise<Response> {
-  const form = page.locator("form", { has: page.getByRole("group", { name: "Workspace access", exact: true }) });
-  await form.getByRole("radio", { name: access, exact: true }).check();
   const answer = answerTo(page, "PATCH", `/api/v0/notebooks/${id}`);
-  await form.getByRole("button", { name: "Save", exact: true }).click();
+  await page.getByLabel("Workspace access", { exact: true }).selectOption({ label: access });
   return answer;
 }
 

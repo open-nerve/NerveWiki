@@ -1,11 +1,13 @@
-import { createContext, useContext, useState } from "react";
-import { Link, Outlet } from "react-router";
+import { observer } from "mobx-react-lite";
+import { createContext, useCallback, useContext, useState } from "react";
+import { Outlet, useMatches } from "react-router";
 
+import { pendingSteps } from "../onboarding/steps";
+import { useStore } from "../stores/context";
 import { useArrivalWatch } from "./arrival";
+import { Corner, CornerBack } from "./corner";
 import { FileDropGuard } from "./file-drop";
-import { LanguageMenu } from "./language-menu";
-import { ThemeMenu } from "./theme-menu";
-import { UserMenu } from "./user-menu";
+import { SettingsOrigin, useOriginRecord, useSettingsMode } from "./settings-origin";
 
 /** ShellColumn is the element a page's shell puts its left column in: before the main, outside it. */
 const ShellColumn = createContext<HTMLElement | null>(null);
@@ -20,39 +22,62 @@ export function useShellColumn(): HTMLElement | null {
   return useContext(ShellColumn);
 }
 
+/** What a route says of the shell: sidebar, that its pages have a left column, the account in its foot. */
+type Shell = { sidebar?: boolean };
+
 /**
- * Layout is the shell around every page: the top bar (with the account once
- * signed in) and the page below it, the one main, which holds whatever the
- * routes render: a page, its error, its 404. A shell of a page's own (a
- * workspace's) puts its left column beside the main, by useShellColumn;
- * the column's place renders no box of its own. A file dropped where no
- * part of the page takes it stays out of the tab (FileDropGuard). It
- * watches the reader from each arrival on (useArrivalWatch).
+ * Layout is the shell around every page: no top bar (M13/P2/S1), the left
+ * column's place and, beside it, the page, the one main, which holds
+ * whatever the routes render: a page, its error, its 404. A shell of a
+ * page's own (a workspace's) puts its left column beside the main, by
+ * useShellColumn; the column's place renders no box of its own. Where no
+ * left column is, the top right holds the account (Corner). A route that
+ * has one (handle: { sidebar: true }) has the account in the column's
+ * foot instead, unless what shows in its place gives the top right back
+ * (useCornerBack): the workspaces not loaded, at / or in a workspace, or
+ * the workspace not found, the session unavailable, an error (decision
+ * 769). The route says so as it renders:
+ * a mark set in an effect would show the top right for a paint first. An
+ * account with a step of onboarding left has the top right all the same:
+ * the route bounces it to the onboarding (M13/P3/S1, decision 832). A
+ * file dropped where no part of the page takes it stays out of the tab
+ * (FileDropGuard). It watches the reader from each arrival on
+ * (useArrivalWatch). In the settings' mode (handle: { settings: true }) it
+ * records where they were entered from (useOriginRecord), which their
+ * directory's Back goes to (SettingsOrigin; M13/P3/S1, decision 812).
  */
-export function Layout() {
+export const Layout = observer(function Layout() {
   useArrivalWatch();
   const [column, setColumn] = useState<HTMLElement | null>(null);
+  const [given, setGiven] = useState(0);
+  const giveBack = useCallback(() => {
+    setGiven((n) => n + 1);
+    return () => setGiven((n) => n - 1);
+  }, []);
+  const { account } = useStore();
+  const me = account?.me;
+  // An account with a step of onboarding left is sent there (Onboarded) from every route with a column: through the
+  // bounce the top right stays, its account's button holding the focus its menu gives back (decision 832).
+  const bounced = me !== undefined && pendingSteps(me).length > 0;
+  const routed = useMatches().some((match) => (match.handle as Shell | undefined)?.sidebar === true);
+  const sidebar = routed && !bounced;
+  const origin = useOriginRecord(useSettingsMode());
   return (
-    <div className="flex min-h-svh flex-col">
+    <div className="flex min-h-svh flex-col md:flex-row">
       <FileDropGuard />
-      <header className="flex h-14 items-center justify-between border-b px-4">
-        <Link to="/" className="font-semibold">
-          Nerve Wiki
-        </Link>
-        <div className="flex items-center gap-1">
-          <LanguageMenu />
-          <ThemeMenu />
-          <UserMenu />
-        </div>
-      </header>
-      <div className="flex flex-1 flex-col md:flex-row">
-        <div ref={setColumn} className="contents" />
-        <main className="flex min-w-0 flex-1 flex-col p-6">
-          <ShellColumn value={column}>
-            <Outlet />
-          </ShellColumn>
+      <div ref={setColumn} className="contents" />
+      <div className="flex min-w-0 flex-1 flex-col">
+        {(!sidebar || given > 0) && <Corner />}
+        <main className="flex min-w-0 flex-1 flex-col p-6 xl:px-10">
+          <CornerBack value={giveBack}>
+            <ShellColumn value={column}>
+              <SettingsOrigin value={origin}>
+                <Outlet />
+              </SettingsOrigin>
+            </ShellColumn>
+          </CornerBack>
         </main>
       </div>
     </div>
   );
-}
+});

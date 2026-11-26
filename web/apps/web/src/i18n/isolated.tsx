@@ -27,10 +27,21 @@ export function isolate(compose: (name: Namer) => string): Isolating {
   return { text, names };
 }
 
-/** Isolated writes text with each slot's name in a bdi, where the translation puts it (UAX #9's isolates). */
-export function Isolated({ text, names }: Isolating): ReactNode {
-  return text.split(slotted).map((part, i) =>
-    // oxlint-disable-next-line react/no-array-index-key -- a translation may write one name twice: by where it is
-    i % 2 === 0 ? part : <bdi key={i}>{names[Number(part)]}</bdi>
-  );
+/**
+ * Isolated writes text with each slot's name in a bdi, where the translation puts it (UAX #9's isolates); nameClass,
+ * the bdis' classes (the page's head shortens the name alone, M13/P4/S1, decision 899).
+ */
+export function Isolated({ text, names, nameClass }: Isolating & { nameClass?: string }): ReactNode {
+  return text.split(slotted).map((part, i) => {
+    if (i % 2 === 0) {
+      return part;
+    }
+    const name = names[Number(part)];
+    return (
+      // oxlint-disable-next-line react/no-array-index-key -- a translation may write one name twice: by where it is
+      <bdi key={i} className={nameClass}>
+        {name}
+      </bdi>
+    );
+  });
 }

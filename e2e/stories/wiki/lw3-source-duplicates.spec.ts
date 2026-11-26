@@ -10,7 +10,7 @@ import { holdStream } from "../../fixtures/events";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { errorOf, mcpClient, resultOf } from "../../fixtures/mcp";
 import { goto, reload } from "../../fixtures/navigation";
-import { expectFits, phoneWidth } from "../../fixtures/narrow";
+import { expectButtonsInside, expectFits, phoneWidth } from "../../fixtures/narrow";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, deleteNode, moveNode, postPage, readContent } from "../../fixtures/pages";
 import { expect, test, watchOf } from "../../fixtures/test";
@@ -355,7 +355,16 @@ test("LW3 (page): at 375 wide a long source keeps to the page and its refused di
   await page.setViewportSize({ width: phoneWidth, height: 800 });
   const paste = page.getByRole("dialog", { name: `Paste Markdown under ${folder}`, exact: true });
   await expectFits(page, paste, paste.getByRole("heading"));
+  // A draft is asked of before Escape loses it; 320 wide, the two buttons of what the dialog asks inside its box, a
+  // line each, as one line holds not both (decision 958; review B's P5S3B-I1).
+  await paste.getByLabel("Title", { exact: true }).fill("A draft");
   await page.keyboard.press("Escape");
+  await page.setViewportSize({ width: 320, height: 800 });
+  const asking = paste.getByRole("alert");
+  await expect(asking).toContainText("Close, and lose the title and Markdown entered here?");
+  await expectFits(page, paste, asking);
+  await expectButtonsInside(asking);
+  await asking.getByRole("button", { name: "Discard and close", exact: true }).click();
   await expect(paste).toBeHidden();
   await page.setViewportSize({ width: 1280, height: 800 });
   await choosePageAction(page, notebook.name, folder, "Upload files");

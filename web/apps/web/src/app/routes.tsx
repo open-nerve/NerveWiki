@@ -1,4 +1,4 @@
-import { Navigate, type RouteObject } from "react-router";
+import { Navigate, useLocation, type RouteObject } from "react-router";
 
 import { GuestOnly, Onboarded, SignedIn } from "./guards";
 import { Layout } from "./layout";
@@ -32,6 +32,21 @@ import { RouteError } from "./route-error";
 // under it by its id (M8/P3 design 4.2, 4.3). A workspace's search is under
 // its workspace's, beside its notebooks, its query in the address (M8/P5
 // design 4.3).
+//
+// The account's, a workspace's and a notebook's settings are the settings'
+// mode (handle: { settings: true }): the left column their directory
+// (M13/P3/S1, 00-M13 4.4.1); the account's, outside any workspace's shell,
+// draw that column themselves.
+
+/**
+ * IndexTo is a settings index's redirect to its first page, the state it was given passed on, as LandingPage passes
+ * its own: arrived at, the first page's h1 takes the focus (M13/P3/S1, decision 816).
+ */
+function IndexTo({ to }: { to: string }) {
+  const { state } = useLocation();
+  return <Navigate replace to={to} state={state} />;
+}
+
 export const routes: RouteObject[] = [
   {
     Component: Layout,
@@ -83,6 +98,8 @@ export const routes: RouteObject[] = [
                 children: [
                   {
                     index: true,
+                    // It goes on to a workspace's, which has a left column (M13/P2/S1; review A, S1A-M1).
+                    handle: { sidebar: true },
                     lazy: async () => {
                       const { LandingPage } = await import("../pages/landing");
                       return { Component: LandingPage };
@@ -97,17 +114,26 @@ export const routes: RouteObject[] = [
                   },
                   {
                     path: "settings",
+                    // The settings' mode, its column the directory with the account in its foot (M13/P3/S1, decision 811).
+                    handle: { sidebar: true, settings: true },
                     lazy: async () => {
                       const { SettingsLayout } = await import("../pages/settings/settings-layout");
                       return { Component: SettingsLayout };
                     },
                     children: [
-                      { index: true, Component: () => <Navigate replace to="/settings/profile" /> },
+                      { index: true, Component: () => <IndexTo to="/settings/profile" /> },
                       {
                         path: "profile",
                         lazy: async () => {
                           const { ProfilePage } = await import("../pages/settings/profile-page");
                           return { Component: ProfilePage };
+                        },
+                      },
+                      {
+                        path: "appearance",
+                        lazy: async () => {
+                          const { AppearancePage } = await import("../pages/settings/appearance-page");
+                          return { Component: AppearancePage };
                         },
                       },
                       {
@@ -128,6 +154,8 @@ export const routes: RouteObject[] = [
                   },
                   {
                     path: ":slug",
+                    // A left column, with the account in its foot: no top right (layout.tsx; M13/P2/S1, decision 769).
+                    handle: { sidebar: true },
                     lazy: async () => {
                       const { WorkspaceLayout } = await import("../pages/workspace/workspace-layout");
                       return { Component: WorkspaceLayout };
@@ -232,12 +260,14 @@ export const routes: RouteObject[] = [
                           },
                           {
                             path: "settings",
+                            // The settings' mode: the workspace's column their directory (M13/P3/S1, decision 811).
+                            handle: { settings: true },
                             lazy: async () => {
                               const { NotebookSettingsLayout } = await import("../pages/notebook/settings-layout");
                               return { Component: NotebookSettingsLayout };
                             },
                             children: [
-                              { index: true, Component: () => <Navigate replace to="general" /> },
+                              { index: true, Component: () => <IndexTo to="general" /> },
                               {
                                 path: "general",
                                 lazy: async () => {
@@ -273,12 +303,14 @@ export const routes: RouteObject[] = [
                       },
                       {
                         path: "settings",
+                        // The settings' mode: the workspace's column their directory (M13/P3/S1, decision 811).
+                        handle: { settings: true },
                         lazy: async () => {
                           const { WorkspaceSettingsLayout } = await import("../pages/workspace/settings-layout");
                           return { Component: WorkspaceSettingsLayout };
                         },
                         children: [
-                          { index: true, Component: () => <Navigate replace to="general" /> },
+                          { index: true, Component: () => <IndexTo to="general" /> },
                           {
                             path: "general",
                             lazy: async () => {

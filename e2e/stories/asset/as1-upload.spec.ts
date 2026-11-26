@@ -181,6 +181,13 @@ test("AS1 (page): files chosen, or dropped on the reading view, upload to the pa
   const fetched = await download(nervewiki.baseURL, (await name.getAttribute("href")) ?? "");
   expect(Buffer.compare(Buffer.from(await fetched.arrayBuffer()), Buffer.from(pngBytes))).toBe(0);
   await section.getByRole("button", { name: "Actions for notes.txt" }).click();
+  // Its menu open, the pointer away from its row and the focus in the menu, Actions shows still (M13/P5/S3, decisions
+  // 927, 933): its aria-expanded alone keeps it so. The menu is modal, what is outside it hidden from its roles.
+  await page.mouse.move(0, 0);
+  await expect(section.getByRole("button", { name: "Actions for notes.txt", includeHidden: true })).toHaveCSS(
+    "opacity",
+    "1"
+  );
   const downloading = page.waitForEvent("download");
   await page.getByRole("menuitem", { name: "Download" }).click();
   const downloaded = await downloading;

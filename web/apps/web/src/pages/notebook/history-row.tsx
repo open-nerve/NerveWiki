@@ -2,15 +2,18 @@ import { observer } from "mobx-react-lite";
 import { useRef, type Ref } from "react";
 import { Link } from "react-router";
 
+import { arrived } from "../../app/arrival";
+import { factsClass, lineLinkClass, lineTitleClass, revealClass, stackedLinesClass } from "../../app/page-classes";
 import { Button } from "../../components/ui/button";
 import { formatDateTime, formatRelative } from "../../i18n/format";
 import { useT } from "../../i18n/i18n";
 import { isolate, Isolated } from "../../i18n/isolated";
+import { cn } from "../../lib/cn";
 import { useFocusLeaving } from "../../lib/focus-leaving";
 import { shortId } from "../../lib/twins";
 import type { Changeset } from "../../services/page.service";
 import { useStore } from "../../stores/context";
-import { Mark } from "../page/page-versions";
+import { Mark, markClass } from "../page/page-versions";
 import { byText, changesetName, changesText, clientText, countsText } from "./changeset-text";
 import { IngestMark, IngestSources } from "./history-ingest";
 
@@ -25,7 +28,9 @@ import { IngestMark, IngestSources } from "./history-ingest";
  * its first changes summed up and its counts; and its marks: undone,
  * leading to its newest revert, trimmed, and what a revert undid, leading
  * there. Gone with the focus, read away, it gives the focus away (left)
- * before it leaves.
+ * before it leaves. Its links arrive where they lead (M13/P5/S2, decision
+ * 940); Only this person is what it offers besides them, shown as it is
+ * hovered or focused (revealClass, decision 927).
  */
 export const HistoryRow = observer(function HistoryRow({
   changeset,
@@ -59,24 +64,27 @@ export const HistoryRow = observer(function HistoryRow({
   const reverts = changeset.reverts;
   const summary = isolate((named) => changesText(changeset, t, locale, named));
   return (
-    <li ref={row} className="space-y-1 p-4">
-      <p className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <Link
-          ref={linkRef}
-          to={href(changeset.id)}
-          aria-label={name}
-          className="min-w-0 font-medium break-words underline underline-offset-4"
-        >
+    <li ref={row} className={stackedLinesClass}>
+      <p className={cn(lineTitleClass, "flex-wrap gap-x-3 gap-y-1")}>
+        <Link ref={linkRef} to={href(changeset.id)} state={arrived} aria-label={name} className={lineLinkClass}>
           {byText(changeset, t)}
         </Link>
         <IngestMark count={changeset.ingest_count} />
+        {/* -my-1: the 30px pill makes the 20px line no higher (review B's P5B-R1-N5). */}
         {only !== undefined && (
-          <Button variant="ghost" className="h-7 px-2 text-xs" aria-label={only.name} onClick={only.choose}>
+          <Button
+            variant="ghost"
+            size="sm"
+            shape="pill"
+            className={cn("-my-1", revealClass)}
+            aria-label={only.name}
+            onClick={only.choose}
+          >
             {t("history.only")}
           </Button>
         )}
       </p>
-      <p className="text-sm break-words text-muted-foreground">
+      <p className={factsClass}>
         <Isolated {...isolate((named) => clientText(changeset.client, t, named))} />
         {" · "}
         <time dateTime={changeset.created_at} title={formatDateTime(changeset.created_at, locale)}>
@@ -99,15 +107,18 @@ export const HistoryRow = observer(function HistoryRow({
           <Isolated {...summary} />
         </p>
       )}
-      <p className="text-sm text-muted-foreground">{countsText(changeset, t, locale)}</p>
-      <IngestSources changeset={changeset} limit={3} />
+      <p className={factsClass}>{countsText(changeset, t, locale)}</p>
+      <IngestSources changeset={changeset} limit={3} className={factsClass} />
       {(newest !== undefined || changeset.trimmed || changeset.kind === "revert") && (
-        <p className="flex flex-wrap items-center gap-2 text-sm">
+        <p className="flex flex-wrap items-center gap-2 text-compact">
           {newest !== undefined && (
             <Link
               to={href(newest)}
+              state={arrived}
               aria-label={t("history.revertedLabel", { name })}
-              className="rounded border px-1.5 text-xs underline underline-offset-4"
+              // A mark as Trimmed is, one shape of them in the row (decision 930): its edge and words darker as it is
+              // hovered, as a card is, not underlined, which its border would cross (review B's P5B-R1-N3).
+              className={cn(markClass, "hover:border-border-strong hover:text-foreground")}
             >
               {t("history.reverted")}
             </Link>
@@ -117,7 +128,7 @@ export const HistoryRow = observer(function HistoryRow({
             (reverts === null ? (
               <span className="text-muted-foreground">{t("history.revertsPurged")}</span>
             ) : (
-              <Link to={href(reverts.id)} className="min-w-0 break-words underline underline-offset-4">
+              <Link to={href(reverts.id)} state={arrived} className={lineLinkClass}>
                 <Isolated
                   {...isolate((named) =>
                     t("history.reverts", { name: changesetName(reverts, revertsTwin, t, locale, named) })

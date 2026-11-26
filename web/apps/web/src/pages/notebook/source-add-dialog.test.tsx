@@ -5,6 +5,8 @@ import { Outlet } from "react-router";
 import { expect, test, vi } from "vitest";
 
 import { routes } from "../../app/routes";
+import { fieldClass } from "../../components/ui/input";
+import { cn } from "../../lib/cn";
 import { useStore } from "../../stores/context";
 import { PageTreeStore } from "../../stores/page-tree.store";
 import type { RootStore } from "../../stores/root.store";
@@ -203,11 +205,16 @@ test("pasted Markdown refused as a duplicate says which, the focus on what it sa
   expect(creates(server)).toEqual(["POST Again under Guide"]);
 });
 
-test("pasted Markdown shows a server title refusal without clearing the draft", async () => {
+test("pasted Markdown shows a server refusal of the title and the body without clearing the draft", async () => {
   const user = userEvent.setup();
   const server = sourceServer({
     [`POST /api/v0/notebooks/${notebookJSON.id}/pages`]: () =>
-      problem(422, "validation_failed", { errors: [{ field: "title", code: "not_allowed", message: "reserved" }] }),
+      problem(422, "validation_failed", {
+        errors: [
+          { field: "title", code: "not_allowed", message: "reserved" },
+          { field: "content", code: "too_long", message: "too long" },
+        ],
+      }),
   });
   sourcePage(server);
   const dialog = await pasteDialog(user);
@@ -216,6 +223,12 @@ test("pasted Markdown shows a server title refusal without clearing the draft", 
   await user.click(within(dialog).getByRole("button", { name: "Add source" }));
 
   await waitFor(() => expect(dialog.textContent).toContain("Windows reserves this name"));
+  // The body's problem in its note, a form's size in the colour of a problem (M13/P5/S3, 4.3.7; review C's cxx).
+  const note = document.getElementById(`${within(dialog).getByRole("textbox", { name: "Markdown" }).id}-note`);
+  expect([note?.textContent, note?.className]).toEqual([
+    "The page is over 5 MiB: shorten it to save it.",
+    "text-compact text-destructive",
+  ]);
   expect(within(dialog).getByRole("textbox", { name: "Title" })).toHaveProperty("value", "Evidence");
   expect(within(dialog).getByRole("textbox", { name: "Markdown" })).toHaveProperty(
     "value",
@@ -424,3 +437,30 @@ test.each(["closed", "another route", "opened again"] as const)(
     }
   }
 );
+
+// M13/P5/S3 (decisions 926, 934): the dialog's box that asks only an edge, the pasted source's field an input's look,
+// its focus drawn in forced colours too, its note a form's, its label above it as a form's field has it.
+test("the paste's field looks as the title's does, its label spaced as a form's, its note a form's; what the dialog asks is in a box with only an edge", async () => {
+  const user = userEvent.setup();
+  const server = sourceServer();
+  sourcePage(server);
+  const dialog = await pasteDialog(user);
+  const markdown = within(dialog).getByRole("textbox", { name: "Markdown" });
+  const title = within(dialog).getByRole("textbox", { name: "Title" });
+
+  expect(within(dialog).getByText("Markdown", { selector: "label" }).parentElement?.className).toBe("space-y-1.5");
+  expect(markdown.className).toBe(cn(fieldClass, "resize-y py-2 font-mono"));
+  expect([...markdown.classList]).toEqual(
+    expect.arrayContaining(["rounded-control", "bg-surface-2", "focus-visible:outline-hidden"])
+  );
+  expect([...title.classList]).toEqual(expect.arrayContaining(["h-9", "py-1", ...fieldClass.split(" ")]));
+  expect(document.getElementById(`${markdown.id}-note`)?.className).toBe("text-compact text-muted-foreground");
+  draft(dialog);
+  await user.keyboard("{Escape}");
+  const ask = within(dialog).getByRole("alert");
+  expect(ask.className).toBe("space-y-3 rounded-lg border border-border px-4 py-3 text-sm");
+  // Its buttons a line each, to the right, where one line holds not both (decision 958; review B's P5S3B-I1).
+  expect(within(ask).getByRole("button", { name: "Keep editing" }).parentElement?.className).toBe(
+    "flex flex-wrap justify-end gap-2"
+  );
+});

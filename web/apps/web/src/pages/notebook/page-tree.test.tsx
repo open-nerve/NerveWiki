@@ -231,6 +231,72 @@ test("pages of the same title are told apart in their controls and dialogs by wh
   expect(await screen.findByRole("dialog", { name: "Rename Notes (in Guide)" })).toBeTruthy();
 });
 
+/** The lucide icon a link shows, by its class: lucide-list, lucide-history. */
+const icon = (link: HTMLElement) => /\blucide-[\w-]+/.exec(link.querySelector("svg")?.getAttribute("class") ?? "")?.[0];
+
+test.each([
+  ["a standard notebook's ordinary page", () => pageServer(), "Guide", "lucide-file"],
+  ["an LLM Wiki's source area", () => wikiServer(), "raw (source area)", "lucide-library"],
+  ["an LLM Wiki's instructions", () => wikiServer(), "AGENTS (instructions for agents)", "lucide-bot"],
+] as const)("%s has its kind's icon in the tree", async (_kind, server, name, kind) => {
+  renderApp(home, server().app);
+
+  expect(icon(await within(await tree()).findByRole("link", { name }))).toBe(kind);
+});
+
+// A source's icon, which only it has: an attachment's PDF is no longer FileText (M13 closeout, decision 969).
+test("an LLM Wiki's source has its kind's icon in the tree", async () => {
+  const clipping = pageNode(7, "Clipping", raw);
+  renderApp(pagePath(clipping.id), wikiServer("editor", [raw, agents, clipping]).app);
+
+  expect(icon(await within(await tree()).findByRole("link", { name: "Clipping (source)" }))).toBe("lucide-file-text");
+});
+
+// Followed as the tree's pages are, decided as they are clicked (M13/P2/S3, decision 782): opened, the address shown
+// replacing its entry; a click with a modifier the browser's, a new tab's.
+test("an LLM Wiki's Directory and History rows are followed as its pages are: opened, the address shown replaced; a click with a modifier is the browser's", async () => {
+  const user = userEvent.setup();
+  const { router } = renderApp(home, wikiServer().app);
+  const nav = await tree();
+  const directory = within(nav).getByRole("link", { name: "Directory" });
+  await user.click(directory);
+  await waitFor(() => expect(router.state.location.pathname).toBe(`${home}/index`));
+  expect(router.state.historyAction).toBe("PUSH");
+  expect(router.state.location.state).toEqual({ opened: true });
+  await user.click(directory);
+  await waitFor(() => expect(router.state.historyAction).toBe("REPLACE"));
+  expect(router.state.location.pathname).toBe(`${home}/index`);
+  expect(router.state.location.state).toEqual({ opened: true });
+
+  expect(fireEvent.click(within(nav).getByRole("link", { name: "History" }), { ctrlKey: true })).toBe(true);
+  await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+  expect(router.state.location.pathname).toBe(`${home}/index`);
+});
+
+test("an LLM Wiki's Directory and History rows mark their own page, not what is under it, with the icons the places have for them", async () => {
+  const { router } = renderApp(`${home}/index`, wikiServer().app);
+  const nav = await tree();
+  const directory = within(nav).getByRole("link", { name: "Directory" });
+  const history = within(nav).getByRole("link", { name: "History" });
+
+  await waitFor(() => expect(directory.getAttribute("aria-current")).toBe("page"));
+  expect(history.getAttribute("aria-current")).toBeNull();
+  // A changeset's page is under the history, not the history (end; review C-N2).
+  await act(() => router.navigate(`${home}/history/0199a2b4-0000-7000-8000-000000000777`));
+  await waitFor(() => expect(directory.getAttribute("aria-current")).toBeNull());
+  expect(history.getAttribute("aria-current")).toBeNull();
+  await act(() => router.navigate(`${home}/history`));
+  await waitFor(() => expect(history.getAttribute("aria-current")).toBe("page"));
+
+  // The same place, the same icon (decision 796).
+  const places = screen.getByRole("navigation", { name: "More of Plans" });
+  expect([icon(directory), icon(history)]).toEqual([
+    icon(within(places).getByRole("link", { name: "Directory" })),
+    icon(within(places).getByRole("link", { name: "History" })),
+  ]);
+  expect(icon(directory)).toBeDefined();
+});
+
 test("a page's subpages open and close", async () => {
   const user = userEvent.setup();
   renderApp(home, pageServer().app);
@@ -262,6 +328,102 @@ test("the page shown is marked, its ancestors open", async () => {
   expect(link.getAttribute("aria-current")).toBe("page");
   expect(titles(nav)).toEqual(["Guide", "Install", "Linux", "Notes"]);
   expect(within(nav).getByRole("link", { name: "Guide" }).getAttribute("aria-current")).toBeNull();
+});
+
+// A name cut short has its whole as its title: on its text, not on the link, whose name the text is already, a title
+// there its description too (M13 closeout, review A's M13CA-M1).
+test("the notebook's row and each page's row have the name they may cut short as their text's title", async () => {
+  renderApp(pagePath(linux.id), pageServer().app);
+
+  const nav = await tree();
+  const link = await within(nav).findByRole("link", { name: "Linux" });
+  expect([link.getAttribute("title"), link.querySelector("[title]")?.getAttribute("title")]).toEqual([null, "Linux"]);
+  expect(
+    within(nav)
+      .getAllByRole("link")
+      .map((row) => row.querySelector("[title]")?.textContent)
+  ).toEqual(["Guide", "Install", "Linux", "Notes"]);
+  const row = screen.getByRole("heading", { level: 2, name: "Plans" });
+  expect(within(row).getByRole("link").querySelector("[title]")?.getAttribute("title")).toBe("Plans");
+});
+
+// Forced colours take the background away: the page shown's row, an LLM Wiki's Directory or History shown and the
+// notebook's row on its home are outlined by the system's colour there, as the settings' directory's row is (decision
+// 845); the place's own focus ring, an outline too, is not taken by it (M13 closeout, review A's M13CA-M2). The three
+// alike: the tree's row and the notebook's yield to their link's ring as it has the keyboard's focus, two frames
+// crossing at the corners otherwise (M13 closeout fix check 1, review A's M13CA-F1-N2).
+test("in forced colours the rows marked as shown are outlined, the tree's, the places' and the notebook's, but while their link has the keyboard's focus", async () => {
+  const forced = [
+    "forced-colors:data-active:not-has-[a:focus-visible]:outline",
+    "forced-colors:data-active:not-has-[a:focus-visible]:-outline-offset-1",
+  ];
+  const page = renderApp(pagePath(linux.id), pageServer().app);
+  const nav = await tree();
+  const shown = (await within(nav).findByRole("link", { name: "Linux" })).closest<HTMLElement>("[data-active]");
+  expect(shown === null ? [] : [...shown.classList]).toEqual(expect.arrayContaining(forced));
+  expect(shown?.classList.contains("forced-colors:data-active:outline")).toBe(false);
+  page.unmount();
+
+  const index = renderApp(`${home}/index`, wikiServer().app);
+  const wiki = await tree();
+  const directory = within(wiki).getByRole("link", { name: "Directory" });
+  await waitFor(() => expect(directory.getAttribute("aria-current")).toBe("page"));
+  const place = ["forced-colors:not-focus-visible:outline", "forced-colors:not-focus-visible:-outline-offset-1"];
+  expect([...directory.classList]).toEqual(expect.arrayContaining(place));
+  const history = within(wiki).getByRole("link", { name: "History" });
+  expect(place.filter((name) => history.classList.contains(name))).toEqual([]);
+  index.unmount();
+
+  renderApp(home, pageServer().app);
+  await tree();
+  const row = document.querySelector<HTMLElement>("[data-notebook-row]");
+  expect(row?.hasAttribute("data-home")).toBe(true);
+  // Its link's alone: the cog's ring is the cog's, the row's frame round it.
+  expect(row === null ? [] : [...row.classList]).toEqual(
+    expect.arrayContaining([
+      "forced-colors:data-home:not-has-[h2>a:focus-visible]:outline",
+      "forced-colors:data-home:not-has-[h2>a:focus-visible]:-outline-offset-1",
+    ])
+  );
+  expect(row?.classList.contains("forced-colors:data-home:outline")).toBe(false);
+});
+
+// The controls shown as they are hovered or focused show on the same conditions, each faint at rest as it was
+// (decision 966): always in a window narrower than md, where nothing hovers, where a finger may point, and in forced
+// colours. A row's Actions was hovered for below md, the cog and New page not (M13 closeout fix check 1, review C's
+// M13CC-F1-N5). jsdom lays out nothing: the classes are held here (as history-page.test.tsx holds revealClass's).
+test("the cog, New page and a row's Actions show as they are hovered or focused, and always in a narrow window, where nothing hovers, a finger may point, or in forced colours", async () => {
+  renderApp(home, pageServer().app);
+  const nav = await tree();
+  const always = [
+    "max-md:opacity-100",
+    "[@media(hover:none)]:opacity-100",
+    "any-pointer-coarse:opacity-100",
+    "forced-colors:opacity-100",
+  ];
+  const cog = screen.getByRole("link", { name: "Settings of Plans" });
+  const create = within(nav).getByRole("button", { name: "New page" });
+  for (const control of [cog, create]) {
+    expect([...control.classList]).toEqual(
+      expect.arrayContaining([
+        "opacity-40",
+        "hover:opacity-100",
+        "focus-visible:opacity-100",
+        "group-has-[[data-notebook-row]:hover]/notebook:opacity-100",
+        ...always,
+      ])
+    );
+  }
+  const actions = await within(nav).findByRole("button", { name: "Actions for Notes" });
+  expect([...actions.classList]).toEqual(
+    expect.arrayContaining([
+      "opacity-0",
+      "group-hover:opacity-100",
+      "focus-visible:opacity-100",
+      "aria-expanded:opacity-100",
+      ...always,
+    ])
+  );
 });
 
 test("the tree says so when it cannot be read, in the left column and on the home; Try again reads it", async () => {

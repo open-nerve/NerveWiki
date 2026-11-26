@@ -15,5 +15,7 @@ test("an error of the layout shows the error page in its place", async () => {
   renderApp("/");
 
   expect((await screen.findByRole("alert")).textContent).toContain("Something went wrong");
-  expect(screen.queryByRole("banner")).toBeNull();
+  // Outside the layout, no top right (M13/P2/S1, decision 769; review A-M6).
+  expect(screen.queryByRole("button", { name: "Appearance" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Ada" })).toBeNull();
 });

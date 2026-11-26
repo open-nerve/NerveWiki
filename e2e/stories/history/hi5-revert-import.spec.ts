@@ -6,10 +6,12 @@ import { displayNameOf } from "../../fixtures/auth";
 import { answerTo, failedToLoad } from "../../fixtures/browser";
 import type { Database } from "../../fixtures/db";
 import { revertChangeset } from "../../fixtures/history";
+import { expectButtonsInside } from "../../fixtures/narrow";
 import { goto } from "../../fixtures/navigation";
 import { notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, listNodes } from "../../fixtures/pages";
+import { settingsBack } from "../../fixtures/settings-pages";
 import { expect, test } from "../../fixtures/test";
 import { endedJob, startImport, startRevert } from "../../fixtures/transfer";
 import { trashListed } from "../../fixtures/trash";
@@ -175,6 +177,12 @@ test("HI5 (page): an import of more notes than an undo takes, its changeset reac
     "This change is too large to undo here: its nodes, pages, content, links or those pages' history are more than one undo does. Nodes it touched: 1,000+."
   );
   await expect(tooLarge).toBeFocused();
+  // 320 wide, Cancel and Undo in the background inside the dialog, a line each, as one line holds not both (decision
+  // 958, extended to the undo's dialog).
+  const wide = page.viewportSize() ?? { width: 1280, height: 720 };
+  await page.setViewportSize({ width: 320, height: 800 });
+  await expectButtonsInside(dialog);
+  await page.setViewportSize(wide);
   const answer = answerTo(page, "POST", `/api/v0/notebooks/${notebook.id}/reverts`);
   await dialog.getByRole("button", { name: "Undo in the background", exact: true }).click();
   const started = await answer;
@@ -208,7 +216,12 @@ test("HI5 (page): an import of more notes than an undo takes, its changeset reac
     client: "web",
   });
 
-  // The trash lists the notes, a page of them first; the tree shows the page there before alone.
+  // The tree shows the page there before alone; the trash lists the notes, a page of them first. The tree first: its
+  // places are under it, which its rows going would move as they are clicked. Back from the settings to the changeset's
+  // page they were entered from, its tree there, its h1 taking the focus (M13/P3/S1, decision 835).
+  await settingsBack(page, "Notes").click();
+  await expect(heading).toBeFocused();
+  await expect.poll(() => treeTitles(page, "Notes")).toEqual(["Index"]);
   await page
     .getByRole("navigation", { name: "More of Notes", exact: true })
     .getByRole("link", { name: "Trash", exact: true })
@@ -216,6 +229,5 @@ test("HI5 (page): an import of more notes than an undo takes, its changeset reac
   await expect(trashListed(page)).toHaveCount(50);
   await expect(trashListed(page).first()).toContainText("From: the notebook's top level");
   await expect(main.getByRole("button", { name: "More of the trash", exact: true })).toBeVisible();
-  await expect.poll(() => treeTitles(page, "Notes")).toEqual(["Index"]);
   pageWatch.expectConsole({ errors: [failedToLoad(422)] });
 });

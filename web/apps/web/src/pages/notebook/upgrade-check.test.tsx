@@ -2,7 +2,10 @@ import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 
+import { noteClass, stackedLinesClass } from "../../app/page-classes";
+import { cardClass } from "../../app/settings-page";
 import { eventHandlers } from "../../events/handlers";
+import { cn } from "../../lib/cn";
 import type { UpgradeCheck, UpgradeReport } from "../../services/upgrade.service";
 import { eventServer, withEvents } from "../../test/event-server";
 import { json, notebookJSON, problem, workspaceJSON } from "../../test/fakes";
@@ -509,7 +512,8 @@ test("a card's More refused as the upgrade no longer under way says the upgrade'
 
   await user.click(cardOf(section, "Missing type").getByRole("button", { name: "More" }));
 
-  expect(await within(section).findByText("The upgrade's state changed.")).toBeTruthy();
+  // A note, as a list's page has them (M13/P5/S3, decision 932).
+  expect((await within(section).findByText("The upgrade's state changed.")).className).toBe(noteClass);
   await waitFor(() => expect(asked(server, "GET upgrade")).toBe(2));
   expect((cardOf(section, "Missing type").getByRole("group") as HTMLFieldSetElement).disabled).toBe(true);
   reread.resolve();
@@ -1111,7 +1115,7 @@ test("the report's More refused as the upgrade no longer in review says its stat
 
   await user.click(cardOf(report, "Missing type").getByRole("button", { name: "More" }));
 
-  expect(await within(report).findByText("The upgrade's state changed.")).toBeTruthy();
+  expect((await within(report).findByText("The upgrade's state changed.")).className).toBe(noteClass);
   expect((cardOf(report, "Missing type").getByRole("group") as HTMLFieldSetElement).disabled).toBe(true);
   expect(await screen.findByRole("heading", { level: 2, name: "Rollback" })).toBeTruthy();
   expect(server.asked.filter((each) => each !== "GET job upgrade")).toEqual([
@@ -1166,7 +1170,7 @@ test("in review without a report, a mode event shows the report once kept: its c
   renderApp(upgradePath, withEvents(server.app), { eventHandlers });
   const report = await reportSection();
   await waitFor(() => expect(events.streams).toHaveLength(1));
-  expect(within(report).getByText("Being checked, or the last submission did not finish.")).toBeTruthy();
+  expect(within(report).getByText("Being checked, or the last submission did not finish.").className).toBe(noteClass);
 
   server.withUpgrade(inReview());
   mode(events);
@@ -1265,3 +1269,18 @@ test.each([
     expect(reads.count).toBe(2);
   }
 );
+
+// M13/P5/S3 (decision 932): the check's gates are a card's rows, as a list's page has them; its clear checks' summary
+// as the health page's.
+test("the check's gates are rows of a card; its clear checks' summary a group's title", async () => {
+  const user = userEvent.setup();
+  const { section } = await opened(serverOf());
+  await checked(user, section, passedAt);
+
+  const list = within(section).getByRole("list", { name: "The checks" });
+  expect(list.className).toBe(cn(cardClass, "text-sm"));
+  expect(list.children).toHaveLength(8);
+  expect(new Set([...list.children].map((row) => row.className))).toEqual(new Set([stackedLinesClass]));
+  const summary = section.querySelector("details > summary");
+  expect(summary?.className).toBe("cursor-pointer text-compact font-semibold text-muted-foreground");
+});

@@ -254,7 +254,8 @@ test.each([
 
   await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
   expect(await names()).toEqual(["Ada", "Cy"]);
-  expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Members" }));
+  // The page's h1, its name: the list's group has no title of its own (M13/P3/S2, decisions 815, 851).
+  expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Members" }));
   expect(await screen.findByText("No invitations pending.")).toBeTruthy();
   expect(sent).toEqual(["GET members", "DELETE Bob"]);
 });
@@ -367,3 +368,22 @@ test("the members say so when they cannot be read; Try again reads them", async 
 
   expect(await names()).toEqual(["Ada", "Bob", "Cy"]);
 });
+
+// The page's groups (M13/P3/S2, decisions 826, 851): the members first, untitled, the page's name saying it; the
+// invitations an admin's; the leaving the danger zone's, last.
+test.each([
+  ["admin", ["Invitations", "Danger zone"]],
+  ["member", ["Danger zone"]],
+] as const)(
+  "the members page, its %s's: the members untitled, then %j, the leaving in the danger zone",
+  async (role, groups) => {
+    renderApp("/lab/settings/members", membersServer({ role }).app);
+
+    const list = await screen.findByRole("list", { name: "Members" });
+    expect(list.closest("section")?.querySelector("h2")).toBeNull();
+    const main = within(screen.getByRole("main"));
+    expect(main.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent)).toEqual(groups);
+    const danger = within(main.getByRole("heading", { level: 2, name: "Danger zone" }).parentElement as HTMLElement);
+    expect(danger.getByRole("button", { name: "Leave workspace" })).toBeTruthy();
+  }
+);

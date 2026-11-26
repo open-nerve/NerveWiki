@@ -1,6 +1,8 @@
 import { useEffect, useRef } from "react";
 import { useBlocker } from "react-router";
 
+import { useDrawerActions } from "../../app/shell-sidebar";
+
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -29,10 +31,14 @@ type UnsavedGuardProps = {
  * pasted or dropped still upload, a move to another page asks as well,
  * saying they will not be inserted (M12/P2/S5, 18.1); closing the tab is
  * the AssetStore's to ask about, and signing out asks about neither.
+ * Stay closes the drawer of a phone's width the move came from, quietly,
+ * the focus going back to the edit: open over it, it would take the keys
+ * typed (M13/P2/S3, decision 799).
  */
 export function UnsavedGuard({ unsaved, uploading = false, stay }: UnsavedGuardProps) {
   const t = useT();
   const stayed = useRef(false);
+  const drawer = useDrawerActions();
   const asking = unsaved || uploading;
   const blocker = useBlocker(
     ({ currentLocation, nextLocation }) => asking && currentLocation.pathname !== nextLocation.pathname
@@ -65,6 +71,7 @@ export function UnsavedGuard({ unsaved, uploading = false, stay }: UnsavedGuardP
           if (stayed.current) {
             stayed.current = false;
             event.preventDefault();
+            drawer.quietClose();
             stay();
           }
         }}

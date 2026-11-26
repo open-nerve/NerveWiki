@@ -3,6 +3,7 @@ import { bearer, createToken, displayNameOf, emailFor, register, registerOnboard
 import { accountMenu } from "../../fixtures/auth-pages";
 import { answerTo, failedToLoad, noteOf } from "../../fixtures/browser";
 import { goto, reload } from "../../fixtures/navigation";
+import { settingsGroup, settingsTitle } from "../../fixtures/settings-pages";
 import { expect, test } from "../../fixtures/test";
 
 // A8, the profile and the preferences (M1 design 3); the theme and the language are this browser's (M1/P6 design 3.3).
@@ -66,27 +67,52 @@ test("A8 (page): the settings change the display name, and this browser's theme 
 
   await name.fill("  Ada Lovelace  ");
   expect(await save()).toBe(200);
+  // Saved, Save goes, the field taking the focus back (M13/P3/S1, decision 822).
+  await expect(name).toBeFocused();
   await expect(page.getByRole("status")).toHaveText("Saved.");
   await expect(accountMenu(page, "Ada Lovelace")).toBeVisible();
   await expectDisplayName(db, userId, "Ada Lovelace");
 
-  // The theme and the language apply at once.
+  // The theme and the language apply at once, on their page of the settings (M13/P3/S1, decision 824).
+  await settingsGroup(page, "Settings").getByRole("link", { name: "Appearance and language", exact: true }).click();
   const html = page.locator("html");
   await page.getByRole("radio", { name: "Dark" }).check();
   await expect(html).toHaveClass(/\bdark\b/);
   await page.getByRole("radio", { name: "简体中文" }).check();
-  await expect(page.getByRole("heading", { level: 1, name: "设置" })).toBeVisible();
+  await expect(settingsTitle(page, "外观与语言")).toBeVisible();
   await expect(html).toHaveAttribute("lang", "zh-CN");
 
-  // All of it holds after a reload: the name on the server, the preferences in this browser, as the top bar's
-  // theme menu shows too.
+  // All of it holds after a reload: the name on the server, the preferences in this browser, as the account menu's
+  // Appearance shows too (M13/P2/S1).
   await reload(page);
-  await expect(page.getByRole("heading", { level: 1, name: "设置" })).toBeVisible();
+  await expect(settingsTitle(page, "外观与语言")).toBeVisible();
   await expect(html).toHaveClass(/\bdark\b/);
   await expect(page.getByRole("radio", { name: "深色" })).toBeChecked();
-  await page.getByRole("button", { name: "主题" }).click();
+  await accountMenu(page, "Ada Lovelace").click();
+  await page.getByRole("menuitem", { name: "外观", exact: true }).click();
   await expect(page.getByRole("menuitemradio", { name: "深色" })).toBeChecked();
+  // Chosen by the pointer inside it, the theme changes, the submenu staying open (review C, S1C-N6). The pointer goes
+  // there in steps, as a hand moves it: the account's menu opens from its row at the left column's foot, its submenu to
+  // the menu's right (M13/P3/S1); Radix keeps the submenu open while the pointer heads for it, which it reads from the
+  // pointer's moves.
+  const light = page.getByRole("menuitemradio", { name: "浅色" });
+  const box = await light.boundingBox();
+  if (box === null) {
+    throw new Error("浅色 is not laid out");
+  }
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 10 });
+  await light.click();
+  await expect(html).not.toHaveClass(/\bdark\b/);
+  await expect(page.getByRole("menuitemradio", { name: "浅色" })).toBeChecked();
+  await page.getByRole("menuitemradio", { name: "深色" }).click();
+  await expect(html).toHaveClass(/\bdark\b/);
+  await expect(page.getByRole("menuitemradio", { name: "深色" })).toBeChecked();
+  // One Escape closes the whole menu, its submenu too.
   await page.keyboard.press("Escape");
+  await page
+    .getByRole("navigation", { name: "设置", exact: true })
+    .getByRole("link", { name: "个人资料", exact: true })
+    .click();
   await expect(page.getByLabel("显示名", { exact: true })).toHaveValue("Ada Lovelace");
   await expect(accountMenu(page, "Ada Lovelace")).toBeVisible();
 });

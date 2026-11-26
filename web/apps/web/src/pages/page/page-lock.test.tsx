@@ -453,6 +453,27 @@ test.each<[string, (server: ReturnType<typeof pageServer>) => void, string]>([
   }
 );
 
+test.each<[string, (server: ReturnType<typeof pageServer>) => void]>([
+  ["unlocked by an admin", (server) => server.unlock(guide.id, bob)],
+  [
+    "lapsed, the lock taken meanwhile",
+    (server) => {
+      server.sessions.clear();
+      server.hold(guide.id, bob);
+    },
+  ],
+])("an edit %s names who in a bdi in its banner, the focus there (M13/P4/S3, decision 878)", async (_, lose) => {
+  const { server } = await pressEdit();
+  await pageEditor();
+
+  lose(server);
+  shown();
+
+  const banner = await screen.findByRole("alert");
+  await waitFor(() => expect(document.activeElement).toBe(banner));
+  expect([...banner.querySelectorAll("bdi")].map((name) => name.textContent)).toEqual(["Bob"]);
+});
+
 test("in Chinese, an edit lapsed, the page gone, says it was deleted or the access to it lost while it was edited", async () => {
   const { server } = await pressEdit();
   const { type } = await pageEditor();

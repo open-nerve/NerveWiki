@@ -10,6 +10,7 @@ import { pageEditor } from "../../test/page-editor";
 import { problem } from "../../test/fakes";
 import { bob, guide, pagePath, pageServer } from "../../test/page-server";
 import { renderApp } from "../../test/render";
+import { lockNote } from "../../test/lock-note";
 
 // Autosave and idle exit on the page (M5/P5 design 3.4–3.7), in StrictMode
 // as the app runs, with the app's editor extensions: the registry's last
@@ -167,7 +168,7 @@ test("an edit without input for 30 minutes is saved and left: the reading view s
   // Refused, the reading view stays: what it said of the edit before goes.
   server.hold(guide.id, bob);
   await user.click(edit);
-  expect(await screen.findByText("Bob is editing this page.")).toBeTruthy();
+  expect(await screen.findByText(lockNote("Bob is editing this page."))).toBeTruthy();
   expect(screen.queryByText(idleLeft)).toBeNull();
   expect(edit.hasAttribute("aria-describedby")).toBe(false);
 });

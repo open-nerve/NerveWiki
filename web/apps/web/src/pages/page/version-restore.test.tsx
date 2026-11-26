@@ -10,6 +10,7 @@ import { marked } from "../../test/page-editor";
 import { section } from "../../test/page-panel";
 import { bob, install, pagePath, pageServer, versionJSON } from "../../test/page-server";
 import { renderApp } from "../../test/render";
+import { lockNote } from "../../test/lock-note";
 
 // A version restored (M8 design 4.4; P1 design 4.5): each answer.
 
@@ -153,7 +154,7 @@ test("the dialog shows what the restore changes of the page as it is now; restor
   expect(restores(server.sent)).toEqual(["RESTORE Install 4 on 6"]);
   expect((await screen.findByRole("article", { name: "Install" })).textContent).toBe("Install\nthree");
   await waitFor(() => expect(within(section("Versions")).getAllByRole("listitem")).toHaveLength(4));
-  expect(within(section("Versions")).getAllByRole("listitem")[0]?.textContent).toMatch(/CurrentAda · Restore$/);
+  expect(within(section("Versions")).getAllByRole("listitem")[0]?.textContent).toMatch(/Ada · Restore Current$/);
   expect(server.sent.slice(before)).toEqual(expect.arrayContaining(["GET view Install", "GET versions Install"]));
 });
 
@@ -374,7 +375,7 @@ test("a page someone edits says who in the dialog, which stays; the page's lock 
 
   expect((await within(dialog).findByRole("alert")).textContent).toBe("Bob is editing “Install”.");
   expect(screen.getByRole("alertdialog")).toBe(dialog);
-  expect(await screen.findByText("Bob is editing this page.")).toBeTruthy();
+  expect(await screen.findByText(lockNote("Bob is editing this page."))).toBeTruthy();
 });
 
 test("a page gone closes the dialog, the version's page saying so", async () => {
@@ -612,6 +613,14 @@ test("Show unchanged lines is offered where the comparison folds: texts that dif
 
   await user.click(await screen.findByRole("tab", { name: "Compare with the current" }));
   const show = await screen.findByRole("button", { name: "Show unchanged lines" });
+  // A version's comparison has the conflict's buttons, small pills (decision 878; M13 closeout, review B's M13CB-N2).
+  for (const name of ["Previous change", "Next change", "Show unchanged lines"]) {
+    const button = screen.getByRole("button", { name });
+    expect(
+      ["h-7.5", "rounded-full", "px-3.25", "text-compact"].filter((each) => !button.classList.contains(each)),
+      name
+    ).toEqual([]);
+  }
   await user.click(show);
 
   expect(show.getAttribute("aria-pressed")).toBe("true");

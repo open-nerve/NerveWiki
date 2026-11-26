@@ -17,6 +17,8 @@ type NotebookGroupsProps = {
   empty: ReactNode;
   headingClassName: string;
   listClassName: string;
+  /** A group's, its heading and its list. */
+  groupClassName: string;
 };
 
 /**
@@ -32,6 +34,7 @@ export const NotebookGroups = observer(function NotebookGroups({
   empty,
   headingClassName,
   listClassName,
+  groupClassName,
 }: NotebookGroupsProps) {
   const notebooks = useNotebooks(workspace);
   const t = useT();
@@ -48,7 +51,13 @@ export const NotebookGroups = observer(function NotebookGroups({
     return empty;
   }
   return groups.map(({ key, title, list }) => (
-    <Group key={key} title={title} headingClassName={headingClassName} listClassName={listClassName}>
+    <Group
+      key={key}
+      title={title}
+      headingClassName={headingClassName}
+      listClassName={listClassName}
+      groupClassName={groupClassName}
+    >
       {list.map((notebook) => (
         <li key={notebook.id} className="flex flex-col">
           {renderItem(notebook)}
@@ -58,12 +67,18 @@ export const NotebookGroups = observer(function NotebookGroups({
   ));
 });
 
-type GroupProps = { title: string; headingClassName: string; listClassName: string; children: ReactNode };
+type GroupProps = {
+  title: string;
+  headingClassName: string;
+  listClassName: string;
+  groupClassName: string;
+  children: ReactNode;
+};
 
-function Group({ title, headingClassName, listClassName, children }: GroupProps) {
+function Group({ title, headingClassName, listClassName, groupClassName, children }: GroupProps) {
   const id = useId();
   return (
-    <div className="space-y-2">
+    <div className={groupClassName}>
       <h2 id={id} className={headingClassName}>
         {title}
       </h2>

@@ -1,17 +1,21 @@
-import { File, ScrollText } from "lucide-react";
 import { observer } from "mobx-react-lite";
 import { useRef, useState, type Ref } from "react";
 import { Link } from "react-router";
 import { useSWRConfig } from "swr";
 
+import { arrived } from "../../app/arrival";
 import { writesNotebook } from "../../app/effective-role";
 import { useMounted } from "../../app/mounted";
+import { factsClass, lineLinkClass, lineTitleClass, splitRowClass } from "../../app/page-classes";
 import { errorText } from "../../app/problem-messages";
+import { listTextClass } from "../../app/settings-page";
+import { PageIcon } from "../../components/page-icon";
 import { Button } from "../../components/ui/button";
 import { formatDateTime, formatRelative } from "../../i18n/format";
 import { useT, type Translate } from "../../i18n/i18n";
 import { isolate, Isolated, same, type Namer } from "../../i18n/isolated";
 import type { Locale } from "../../i18n/locale";
+import { cn } from "../../lib/cn";
 import { useFocusLeaving } from "../../lib/focus-leaving";
 import { shortId, twinsOf } from "../../lib/twins";
 import { ApiError, lost } from "../../services/api";
@@ -267,16 +271,16 @@ export function namesOf(item: TrashItem, twin: Twin, t: Translate, locale: Local
   };
 }
 
-/** ItemIcon is the icon of item's kind, for the eye: a page's, or its attachment's type's. */
-export function ItemIcon({ item }: { item: TrashItem }) {
+/**
+ * ItemIcon is the icon of item's kind, for the eye: a page's, or its attachment's type's, the grey of the search's
+ * (M13/P5/S2), by the first line of a name that wraps (review B's P5S2B-M1: 2px down the 20px line); className, the
+ * preview's size and place, which its attachment's takes too (review B's P5B-R1-N2).
+ */
+export function ItemIcon({ item, className }: { item: TrashItem; className?: string }) {
   if (item.kind === "page") {
-    return <ScrollText aria-hidden className="size-4 shrink-0 text-muted-foreground" />;
+    return <PageIcon className={cn("mt-0.5 self-start text-faint", className)} />;
   }
-  return item.asset === null ? (
-    <File aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-  ) : (
-    <AssetIcon mime={item.asset.mime} />
-  );
+  return <AssetIcon mime={item.asset?.mime} className={cn("mt-0.5 self-start", className)} />;
 }
 
 /**
@@ -284,17 +288,29 @@ export function ItemIcon({ item }: { item: TrashItem }) {
  * who deleted it, as long ago before now as it is (the time in full as its
  * title), and the end of its id when a twin's deletion is in the same
  * minute (id); until when it can be restored, how many pages and
- * attachments it holds, and where a restore puts it.
+ * attachments it holds, and where a restore puts it. Its lines in a block
+ * of className: their size and colour, the row's or the preview's
+ * (M13/P5/S2).
  */
-export function TrashFacts({ item, now, id }: { item: TrashItem; now: number; id?: string }) {
+export function TrashFacts({
+  item,
+  now,
+  id,
+  className,
+}: {
+  item: TrashItem;
+  now: number;
+  id?: string;
+  className: string;
+}) {
   const t = useT();
   const { locale } = useStore().preferences;
   return (
-    <>
-      <p className="text-sm break-words text-muted-foreground">
+    <div className={className}>
+      <p className="break-words">
         <Isolated {...isolate((name) => fromText(item, t, name))} />
       </p>
-      <p className="text-sm break-words text-muted-foreground">
+      <p className="break-words">
         <Isolated {...isolate((name) => t("trash.deletedBy", { name: name(item.deleted_by.display_name) }))} />
         {" · "}
         <time dateTime={item.deleted_at} title={formatDateTime(item.deleted_at, locale)}>
@@ -307,15 +323,15 @@ export function TrashFacts({ item, now, id }: { item: TrashItem; now: number; id
           </>
         )}
       </p>
-      <p className="text-sm text-muted-foreground">
+      <p className="break-words">
         {t("trash.until", { time: formatDateTime(item.restorable_until, locale) })}
         {" · "}
         {t("trash.counts", { pages: item.pages, assets: item.assets })}
       </p>
-      <p className="text-sm break-words text-muted-foreground">
+      <p className="break-words">
         <Isolated {...isolate((name) => restoreToText(item, t, name))} />
       </p>
-    </>
+    </div>
   );
 }
 
@@ -400,12 +416,21 @@ export function useBackgroundRestore(notebook: Notebook): (item: TrashItem) => P
 }
 
 /**
+ * The Restore in the background named for its item, the trash's and the preview's: it breaks as the item's name
+ * does, a name of no space too (review B's P5B-M12), and shrinks in its row (Button's shrink-0 would have it leave the
+ * screen on the left); one line a pill, more a rounded block.
+ */
+export const backgroundClass = "h-auto min-h-7.5 shrink rounded-[15px] py-1 whitespace-normal text-start wrap-anywhere";
+
+/**
  * RestoreButton is an item's Restore, named label, or its Restore in the
  * background, which says text: busy while its restore is out, or while
  * busy says one is that another mount sent, the item's list or preview
  * left and come back to (M5-polish 22.14); pressed meanwhile it sends
  * nothing (M8/P2 design review B-M3). Gone with the focus, a reader by
- * now, it gives the focus away (left) before it leaves the document.
+ * now, it gives the focus away (left) before it leaves the document. A
+ * small pill (M13/P5/S2); className, where its row places it, or the
+ * background's that breaks its name (backgroundClass).
  */
 export function RestoreButton({
   label,
@@ -413,6 +438,7 @@ export function RestoreButton({
   restore,
   left,
   busy: elsewhere = false,
+  className,
 }: {
   label: string;
   /** What it says; Restore without it. */
@@ -422,6 +448,7 @@ export function RestoreButton({
   left: () => void;
   /** Whether a restore of the item is out that this button did not send. */
   busy?: boolean;
+  className?: string;
 }) {
   const t = useT();
   const mounted = useMounted();
@@ -450,6 +477,9 @@ export function RestoreButton({
     <Button
       ref={button}
       variant="outline"
+      size="sm"
+      shape="pill"
+      className={className}
       aria-label={label}
       aria-busy={sending || elsewhere || undefined}
       aria-disabled={sending || elsewhere || undefined}
@@ -495,23 +525,31 @@ export const TrashRow = observer(function TrashRow({
   useFocusLeaving(row, left);
   const names = namesOf(item, twin, t, locale);
   return (
-    <li ref={row} className="flex flex-wrap items-start justify-between gap-4 p-4">
-      <div className="min-w-0 space-y-1">
-        <p className="flex items-center gap-2 font-medium">
+    <li ref={row} className={splitRowClass}>
+      {/* The width Restore leaves, Restore on its right, below it on the right where they do not fit (P5B-M6). */}
+      <div className={cn(listTextClass, "space-y-1")}>
+        <p className={lineTitleClass}>
           <ItemIcon item={item} />
           <Link
             ref={linkRef}
             to={`/${slug}/notebooks/${notebook.id}/trash/${item.id}`}
+            state={arrived}
             aria-label={names.link}
-            className="min-w-0 break-words underline underline-offset-4"
+            className={lineLinkClass}
           >
             {item.name}
           </Link>
         </p>
-        <TrashFacts item={item} now={now} id={twin === "id" ? shortId(item.id) : undefined} />
+        <TrashFacts
+          item={item}
+          now={now}
+          id={twin === "id" ? shortId(item.id) : undefined}
+          className={cn(factsClass, "space-y-1")}
+        />
       </div>
       {writesNotebook(notebook) && (
         <RestoreButton
+          className="ms-auto"
           label={names.restore}
           restore={restore}
           left={left}

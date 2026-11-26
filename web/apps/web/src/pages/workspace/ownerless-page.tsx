@@ -1,11 +1,15 @@
+import { Box } from "lucide-react";
 import { observer } from "mobx-react-lite";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router";
 import useSWR, { useSWRConfig } from "swr";
 
+import { arrived } from "../../app/arrival";
 import { useFollowRole } from "../../app/follow-role";
 import { NotLoaded } from "../../app/not-loaded";
 import { errorText } from "../../app/problem-messages";
+import { SettingsCard, SettingsSection, useSettingsHeading } from "../../app/settings-page";
+import { EmptyState } from "../../components/empty-state";
 import { Alert } from "../../components/ui/alert";
 import { useT } from "../../i18n/i18n";
 import { twinsOf } from "../../lib/twins";
@@ -21,7 +25,9 @@ import { useWorkspace } from "./workspace-layout";
 /**
  * OwnerlessPage is a workspace's notebooks without an admin, and the audit
  * of what was done with them (M3/P5 design 3.3): its admins' alone. Anyone
- * else reads that much, and nothing is asked of the server.
+ * else reads that much, and nothing is asked of the server. The list a
+ * card's, untitled (the page's name says it; M13/P3/S2, decision 851), the
+ * audit a group of its own.
  */
 export const OwnerlessPage = observer(function OwnerlessPage() {
   const workspace = useWorkspace();
@@ -30,10 +36,10 @@ export const OwnerlessPage = observer(function OwnerlessPage() {
     return <p className="text-muted-foreground">{t("ownerless.adminsOnly")}</p>;
   }
   return (
-    <div className="space-y-10">
+    <>
       <OwnerlessSection workspace={workspace} />
       <AuditSection workspace={workspace} />
-    </div>
+    </>
   );
 });
 
@@ -43,7 +49,9 @@ const texts = { "notebook.not_found": "ownerless.gone" } as const;
 /**
  * OwnerlessSection lists the ownerless notebooks, the longest ownerless
  * first. Taking one over puts it among the account's notebooks, and says
- * so with a way to it; a row that leaves gives the focus to the heading,
+ * so with a way to it, which leaves the settings, arrived at (M13/P3/S2,
+ * decision 839); a row that leaves gives the focus to the page's h1, its
+ * name (decision 815),
  * from where the reader pressed Take over, from nothing or from itself,
  * the reader having done nothing meanwhile (v0.1 design 13.2, item 26;
  * M12/P2/S1, 22.17).
@@ -63,7 +71,7 @@ const OwnerlessSection = observer(function OwnerlessSection({ workspace }: { wor
   });
   const [failure, setFailure] = useState<unknown>();
   const [taken, setTaken] = useState<Notebook>();
-  const heading = useRef<HTMLHeadingElement>(null);
+  const heading = useSettingsHeading();
   const failed = failure === undefined ? undefined : errorText(failure, t, texts);
 
   function refused(refusal: unknown) {
@@ -122,19 +130,18 @@ const OwnerlessSection = observer(function OwnerlessSection({ workspace }: { wor
 
   const twins = twinsOf(ownerless.list ?? [], twinKey);
   return (
-    <section className="space-y-4">
-      <div className="max-w-2xl space-y-1">
-        <h2 ref={heading} tabIndex={-1} className="text-lg font-semibold outline-none">
-          {t("workspaceSettings.ownerless")}
-        </h2>
-        <p className="text-sm text-muted-foreground">{t("ownerless.body")}</p>
-      </div>
+    <SettingsSection>
+      <p className="max-w-2xl px-0.5 text-sm text-muted-foreground">{t("ownerless.body")}</p>
       {failed !== undefined && <Alert>{failed}</Alert>}
-      <output className="block text-sm">
+      <output className="block px-0.5 text-sm empty:absolute">
         {taken !== undefined && (
           <>
             {t("ownerless.takenOver", { name: taken.name })}{" "}
-            <Link to={`/${workspace.slug}/notebooks/${taken.id}`} className="underline underline-offset-4">
+            <Link
+              to={`/${workspace.slug}/notebooks/${taken.id}`}
+              state={arrived}
+              className="underline underline-offset-4"
+            >
               {t("ownerless.open")}
             </Link>
           </>
@@ -143,9 +150,13 @@ const OwnerlessSection = observer(function OwnerlessSection({ workspace }: { wor
       {ownerless.list === undefined ? (
         <NotLoaded error={error} retry={() => void mutate()} />
       ) : ownerless.list.length === 0 ? (
-        <p className="text-muted-foreground">{t("ownerless.none")}</p>
+        <SettingsCard>
+          <EmptyState icon={Box} size="card">
+            {t("ownerless.none")}
+          </EmptyState>
+        </SettingsCard>
       ) : (
-        <ul aria-label={t("workspaceSettings.ownerless")} className="divide-y rounded-md border">
+        <SettingsCard list label={t("workspaceSettings.ownerless")}>
           {ownerless.list.map((notebook) => (
             <OwnerlessRow
               key={notebook.id}
@@ -156,8 +167,8 @@ const OwnerlessSection = observer(function OwnerlessSection({ workspace }: { wor
               removed={() => heading.current?.focus()}
             />
           ))}
-        </ul>
+        </SettingsCard>
       )}
-    </section>
+    </SettingsSection>
   );
 });

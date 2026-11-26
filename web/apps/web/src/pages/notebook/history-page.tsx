@@ -1,12 +1,17 @@
+import { History } from "lucide-react";
 import { observer } from "mobx-react-lite";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useSearchParams } from "react-router";
 import useSWR, { unstable_serialize, useSWRConfig } from "swr";
 
 import { useArrivalFocus } from "../../app/arrival";
+import { ColumnTop } from "../../app/column-top";
 import { useDocumentTitle } from "../../app/document-title";
 import { NotLoaded } from "../../app/not-loaded";
+import { listColumnClass } from "../../app/page-classes";
 import { errorText } from "../../app/problem-messages";
+import { pageTitleClass, SettingsCard } from "../../app/settings-page";
+import { EmptyState } from "../../components/empty-state";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { useT } from "../../i18n/i18n";
@@ -168,8 +173,9 @@ export const HistoryPage = observer(function HistoryPage() {
         : undefined;
   const now = Date.now();
   return (
-    <section className="space-y-4">
-      <h1 ref={heading} tabIndex={-1} className="text-2xl font-semibold outline-none">
+    <section className={listColumnClass}>
+      <ColumnTop />
+      <h1 ref={heading} tabIndex={-1} className={pageTitleClass}>
         {title}
       </h1>
       <HistoryFilters
@@ -191,9 +197,9 @@ export const HistoryPage = observer(function HistoryPage() {
       ) : data === undefined ? (
         <NotLoaded error={error} retry={() => void mutate()} />
       ) : changesets.length === 0 ? (
-        <p className="text-muted-foreground">{t("history.empty")}</p>
+        <EmptyState icon={History}>{t("history.empty")}</EmptyState>
       ) : (
-        <ul aria-label={t("history.list")} className="divide-y rounded-md border">
+        <SettingsCard list label={t("history.list")}>
           {changesets.map((changeset) => (
             <HistoryRow
               key={changeset.id}
@@ -211,7 +217,7 @@ export const HistoryPage = observer(function HistoryPage() {
               now={now}
             />
           ))}
-        </ul>
+        </SettingsCard>
       )}
       {more.failure !== undefined && <Alert>{errorText(more.failure, t)}</Alert>}
       {refused === undefined && cursor !== undefined && <LoadMoreButton more={more} label={t("history.more")} />}

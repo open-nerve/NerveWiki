@@ -1,11 +1,13 @@
 import { EditorView } from "@codemirror/view";
-import { act, configure, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, configure, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useEffect } from "react";
 import { Outlet } from "react-router";
 import { afterAll, afterEach, beforeAll, expect, test, vi } from "vitest";
 
 import { routes } from "../../app/routes";
+import { autosavePause } from "../../editor/autosave";
+import { editorExtensions } from "../../editor/registry";
 import { useStore } from "../../stores/context";
 import type { RootStore } from "../../stores/root.store";
 import { json, problem, workspaceJSON } from "../../test/fakes";
@@ -502,4 +504,231 @@ test("Done, the account made a reader meanwhile, gives the focus to the page's t
   await screen.findByRole("button", { name: "Edit" });
   await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
   expect(document.activeElement).toBe(title);
+});
+
+// The edit's status and buttons in the page's head (M13/P4/S1, decisions 866, 867, 894): the status in the box of who
+// edited the page last, Save before the right column's toggle, Done after it; a note under the title.
+
+/** head is the page's head's right group, its box first: the right column's toggle's. */
+function head(): { group: HTMLElement; box: Element | null; toggle: HTMLElement } {
+  const toggle = screen.getByRole("button", { name: "About this page" });
+  const group = toggle.parentElement;
+  if (group === null) {
+    throw new Error("the toggle is in no group");
+  }
+  return { group, box: group.firstElementChild, toggle };
+}
+
+/** before tells whether a comes before b in the document. */
+const before = (a: Node, b: Node) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+
+test("editing, the page's head has the edit's status in the box of who edited the page, Save before the column's toggle, Done after it; reading, that box says who edited it", async () => {
+  const server = pageServer();
+  renderApp(pagePath(guide.id), server.app);
+  await screen.findByText(
+    (_, element) => element?.tagName === "P" && (element.textContent ?? "").startsWith("Edited by ")
+  );
+  const reading = head();
+  expect(reading.box?.textContent).toMatch(/^Edited by Ada /);
+  expect(reading.box?.className).toContain("text-[12.5px]");
+  expect(reading.box?.className).toContain("text-faint");
+
+  await userEvent.setup().click(screen.getByRole("button", { name: "Edit" }));
+  const { type } = await pageEditor();
+  const { group, box, toggle } = head();
+  const output = status();
+  expect(box?.contains(output)).toBe(true);
+  expect(box).toBe(reading.box);
+  const save = within(group).getByRole("button", { name: "Save" });
+  const done = within(group).getByRole("button", { name: "Done" });
+  expect([before(output, save), before(save, toggle), before(toggle, done)]).toEqual([true, true, true]);
+  expect(output.className).not.toContain("text-destructive");
+
+  type("!");
+  await waitFor(() => expect(output.textContent).toBe("Unsaved changes"));
+  expect(output.hasAttribute("data-saved")).toBe(false);
+  ctrl("s");
+  await waitFor(() => expect(output.textContent).toBe("Saved."));
+  expect(output.getAttribute("data-saved")).toBe("true");
+});
+
+test("a save that fails says why in the head's box, in the destructive colour", async () => {
+  const server = pageServer({ answers: { "PUT /api/v0/pages/*/content": () => problem(422, "validation_failed") } });
+  const { type } = await editing(server);
+
+  type("!");
+  ctrl("s");
+  await waitFor(() => expect(status().textContent).toBe("Some values are not valid."));
+  expect(head().box?.contains(status())).toBe(true);
+  expect(status().className).toContain("text-destructive");
+});
+
+test("editing, a note under the title says others only read the page meanwhile; in Chinese too", async () => {
+  const { server } = await editing();
+  const title = screen.getByRole("heading", { level: 1, name: "Guide" });
+  const note = screen.getByText("You are editing; others can only read this page meanwhile.");
+  expect(note.tagName).toBe("P");
+  expect(before(title, note)).toBe(true);
+  expect(note.closest("output, [role=status], [role=alert]")).toBeNull();
+  cleanup();
+
+  const chinese = pageServer();
+  chinese.app.preferences.setLocale("zh-CN");
+  renderApp(pagePath(guide.id), chinese.app);
+  await userEvent.setup().click(await screen.findByRole("button", { name: "编辑" }));
+  expect(await screen.findByText("你正在编辑，别人此时只能阅读这一页")).toBeTruthy();
+  expect([server.sent, chinese.sent].map((sent) => sent.includes("OPEN Guide"))).toEqual([true, true]);
+});
+
+test("an edit lost has no note under the title: its banner says why", async () => {
+  const { server, type } = await editing();
+  expect(screen.getByText("You are editing; others can only read this page meanwhile.")).toBeTruthy();
+  type(" more");
+  server.takeOver(guide.id);
+  // The page shown again beats the session, which answers that it was taken over.
+  act(() => void document.dispatchEvent(new Event("visibilitychange")));
+
+  await screen.findByRole("alert");
+  expect(screen.queryByText("You are editing; others can only read this page meanwhile.")).toBeNull();
+});
+
+test("Done in the page's head, its leave's save meeting a conflict: the conflict's heading takes the focus", async () => {
+  const { user, server, type } = await editing();
+  type("mine");
+  server.contents.set(guide.id, { content: "Guide\ntheirs\n", revision: 2 });
+
+  await user.click(within(head().group).getByRole("button", { name: "Done" }));
+  const region = await screen.findByRole("region", { name: "This page changed while you edited it" });
+  await waitFor(() =>
+    expect(document.activeElement).toBe(
+      within(region).getByRole("heading", { name: "This page changed while you edited it" })
+    )
+  );
+});
+
+// Save shown only when it is needed (M13/P4/S3, decisions 877, 885, 894, 895, 896): with something unsaved, or as long
+// as the focus stays in the head's right group once it showed; otherwise invisible, its room kept. jsdom reads no
+// Tailwind: the cells read its class, and find it in either case.
+
+/** Guide edited with the app's editor extensions, autosave's among them, on timers the test moves. */
+async function autosaving(server = pageServer()) {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+  renderApp(pagePath(guide.id), server.app, { editorExtensions });
+  await user.click(await screen.findByRole("button", { name: "Edit" }));
+  return { user, server, ...(await pageEditor()) };
+}
+
+/** autosaved has autosave's pause go by, what was typed saved. */
+async function autosaved() {
+  await act(() => vi.advanceTimersByTimeAsync(autosavePause));
+  await waitFor(() => expect(status().textContent).toBe("Saved."));
+}
+
+/** The head's Save, Done and the right column's toggle. */
+const save = () => within(head().group).getByRole("button", { name: "Save" });
+const done = () => within(head().group).getByRole("button", { name: "Done" });
+const toggle = () => within(head().group).getByRole("button", { name: "About this page" });
+
+/** hidden tells whether Save is invisible: there, its room kept, not to be focused. */
+const hidden = (button: HTMLElement) => button.classList.contains("invisible");
+
+test("Save is always there, invisible while nothing is unsaved: typed in, it shows; a save that fails keeps it, which tries again", async () => {
+  // The writes the server refuses, which it does not count as sent.
+  let puts = 0;
+  const server = pageServer({
+    answers: {
+      "PUT /api/v0/pages/*/content": () => {
+        puts++;
+        return problem(500, "internal_error");
+      },
+    },
+  });
+  const { user, type } = await editing(server);
+  expect(hidden(save())).toBe(true);
+
+  type("!");
+  await waitFor(() => expect(status().textContent).toBe("Unsaved changes"));
+  expect(hidden(save())).toBe(false);
+  await user.click(save());
+  await waitFor(() => expect(status().className).toContain("text-destructive"));
+  expect(puts).toBe(1);
+  expect(hidden(save())).toBe(false);
+  await user.click(save());
+  await waitFor(() => expect(puts).toBe(2));
+});
+
+test("Save holding the focus as autosave saves stays, pressed then doing nothing; the focus gone, it hides (decision 885)", async () => {
+  const { user, server, type, content } = await autosaving();
+  type("!");
+  await waitFor(() => expect(hidden(save())).toBe(false));
+  act(() => save().focus());
+
+  await autosaved();
+  expect(hidden(save())).toBe(false);
+  expect(document.activeElement).toBe(save());
+  const puts = server.sent.filter((line) => line.startsWith("PUT")).length;
+  await user.click(save());
+  await act(() => vi.advanceTimersByTimeAsync(100));
+  expect(server.sent.filter((line) => line.startsWith("PUT"))).toHaveLength(puts);
+
+  act(() => content.focus());
+  expect(hidden(save())).toBe(true);
+});
+
+test("typed in, the focus on Done as autosave saves: Save stays, the keys back from Done finding it (decision 895, review A's R1-M2)", async () => {
+  const { user, type } = await autosaving();
+  type("!");
+  act(() => done().focus());
+
+  await autosaved();
+  expect(hidden(save())).toBe(false);
+  // Through the toggle, which jsdom, reading no CSS, has in the order too.
+  await user.tab({ shift: true });
+  await user.tab({ shift: true });
+  expect(document.activeElement).toBe(save());
+  expect(hidden(save())).toBe(false);
+});
+
+test("nothing unsaved, the focus going into the head's group shows no Save: as the edit opens, and once autosave saved (review A's R2-M1)", async () => {
+  const { type, content } = await autosaving();
+  act(() => done().focus());
+  expect(hidden(save())).toBe(true);
+  act(() => toggle().focus());
+  expect(hidden(save())).toBe(true);
+
+  act(() => content.focus());
+  type("!");
+  await autosaved();
+  expect(hidden(save())).toBe(true);
+  act(() => done().focus());
+  expect(hidden(save())).toBe(true);
+  act(() => toggle().focus());
+  expect(hidden(save())).toBe(true);
+});
+
+test("something unsaved coming as the focus is in the group, as an upload's link goes in while Done waits: Save shows, and stays once saved until the focus goes", async () => {
+  const { view, content } = await autosaving();
+  act(() => done().focus());
+  expect(hidden(save())).toBe(true);
+
+  act(() => view.dispatch({ changes: { from: view.state.doc.length, insert: "![a](/a.png)" } }));
+  await waitFor(() => expect(hidden(save())).toBe(false));
+  expect(document.activeElement).toBe(done());
+  await autosaved();
+  expect(hidden(save())).toBe(false);
+  act(() => content.focus());
+  expect(hidden(save())).toBe(true);
+});
+
+test("the window losing the focus as Save holds it keeps it: the focus leaves for nothing, the element still active (section 1 (g))", async () => {
+  const { type } = await autosaving();
+  type("!");
+  await waitFor(() => expect(hidden(save())).toBe(false));
+  act(() => save().focus());
+  await autosaved();
+
+  fireEvent.focusOut(save(), { relatedTarget: null });
+  expect(document.activeElement).toBe(save());
+  expect(hidden(save())).toBe(false);
 });

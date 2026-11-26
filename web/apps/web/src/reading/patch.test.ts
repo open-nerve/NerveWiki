@@ -369,3 +369,28 @@ test("an element is found again by its key: a heading by its text, not its id, a
   expect(pairs).toEqual([...two.querySelectorAll("h2, a, summary, audio, sup")].map((element) => element.outerHTML));
   expect(focusKeyOf(one, one.querySelector("p") as Element)).toBeUndefined();
 });
+
+/** coded is a callout of two code blocks, each with its head as codeBlocks makes it, the second's code text. */
+const coded = (text: string) =>
+  '<details><summary>S</summary><pre><div class="nw-code-head">go<button type="button" class="nw-code-copy">Copy</button>' +
+  '</div><code class="language-go">a</code></pre><pre><div class="nw-code-head"><button type="button" ' +
+  `class="nw-code-copy">Copy</button></div><code>${text}</code></pre></details>`;
+
+// M13/P4/S2 (decision 869; review C's M9): a code block's Copy has no id, its head made anew as the view is written;
+// it is found by which of its block's it is.
+test("a code block's Copy is found again by which of its block's Copy buttons it is", () => {
+  const { article: one } = written(coded("b"));
+  const { article: two } = written(coded("b, edited"));
+  const block = one.firstElementChild as Element;
+  const [first, second] = [...block.querySelectorAll("button")];
+
+  expect(focusKeyOf(block, second as Element)).toEqual({ key: "copy", nth: 1 });
+  expect(findByKey(two.firstElementChild as Element, focusKeyOf(block, second as Element) ?? { key: "", nth: 0 })).toBe(
+    two.querySelectorAll("button")[1]
+  );
+  expect(findByKey(two.firstElementChild as Element, focusKeyOf(block, first as Element) ?? { key: "", nth: 1 })).toBe(
+    two.querySelectorAll("button")[0]
+  );
+  // Another button, the view's own or an author's, has no key.
+  expect(focusKeyOf(block, Object.assign(document.createElement("button"), { type: "button" }))).toBeUndefined();
+});

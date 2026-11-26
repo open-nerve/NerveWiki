@@ -5,11 +5,13 @@ import useSWR from "swr";
 
 import { arrived } from "../../app/arrival";
 import { NotLoaded } from "../../app/not-loaded";
-import { dialogOpen, isMod, onMac } from "../../app/shortcuts";
+import { dialogOpen, isMod } from "../../app/shortcuts";
+import { PageIcon } from "../../components/page-icon";
 import { Dialog, DialogContent, DialogTitle } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
 import { useT } from "../../i18n/i18n";
 import { cn } from "../../lib/cn";
+import { onMac } from "../../lib/platform";
 import type { Notebook } from "../../services/notebook.service";
 import { usePageTree } from "../../stores/context";
 import { ancestorsOf, findPages } from "../../stores/page-tree";
@@ -77,7 +79,8 @@ export function QuickSwitch({ notebook }: { notebook: Notebook }) {
  * Finder is the quick switch's field and the pages whose title holds what
  * is typed, each with its ancestors, the first 50: a combobox and its
  * listbox, Up and Down to move, Enter to go, and a status that says when
- * none is found or more are. Until the tree is read it says so, with Try
+ * none is found or more are, a line of the keys beside it for the eye
+ * (M13/P2/S3, decision 786). Until the tree is read it says so, with Try
  * again.
  */
 type FinderProps = {
@@ -156,7 +159,7 @@ const Finder = observer(function Finder({ notebook, leave }: FinderProps) {
           // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role, jsx-a11y/no-noninteractive-element-to-interactive-role -- the combobox's listbox: a select's options cannot show their ancestors
           role="listbox"
           aria-label={t("page.quickSwitchPages")}
-          className="max-h-80 overflow-y-auto rounded-md border"
+          className="max-h-80 overflow-y-auto rounded-control border border-border p-1"
         >
           {listed.map((page, index) => (
             // oxlint-disable-next-line jsx-a11y/click-events-have-key-events -- the keys go to the combobox, which names the active option
@@ -169,27 +172,38 @@ const Finder = observer(function Finder({ notebook, leave }: FinderProps) {
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => go(page.id)}
               className={cn(
-                "cursor-pointer px-3 py-1.5 text-sm",
-                index === current && "bg-accent ring-2 ring-ring ring-inset"
+                "flex cursor-pointer items-center gap-2.5 rounded-row px-2.5 py-1.5 text-row",
+                index === current && "bg-active ring-2 ring-ring ring-inset"
               )}
             >
-              <span className="block truncate">{page.name}</span>{" "}
-              <span className="block truncate text-xs text-muted-foreground">
-                {ancestorsOf(tree, page.id)
-                  .map((ancestor) => ancestor.name)
-                  .join(" / ")}
-              </span>
+              <PageIcon className="text-faint" />
+              <div className="min-w-0 flex-1">
+                <span className="block truncate">{page.name}</span>{" "}
+                <span className="block truncate text-xs text-faint">
+                  {ancestorsOf(tree, page.id)
+                    .map((ancestor) => ancestor.name)
+                    .join(" / ")}
+                </span>
+              </div>
             </li>
           ))}
         </ul>
       )}
-      <output className="block text-xs text-muted-foreground empty:sr-only">
-        {listed.length === 0
-          ? t("page.quickSwitchNone")
-          : found.length > shown
-            ? t("page.quickSwitchFirst", { count: shown })
-            : ""}
-      </output>
+      <div className="flex items-center justify-between gap-3">
+        <output className="block text-xs text-muted-foreground empty:sr-only">
+          {listed.length === 0
+            ? t("page.quickSwitchNone")
+            : found.length > shown
+              ? t("page.quickSwitchFirst", { count: shown })
+              : ""}
+        </output>
+        {/* The combobox tells a screen reader its keys already: said again, they are noise. */}
+        {listed.length > 0 && (
+          <p aria-hidden className="ml-auto shrink-0 text-xs text-faint max-md:hidden">
+            {t("page.quickSwitchKeys")}
+          </p>
+        )}
+      </div>
     </div>
   );
 });

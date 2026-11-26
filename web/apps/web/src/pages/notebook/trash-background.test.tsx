@@ -87,6 +87,10 @@ test("a restore refused as too large says so above the list, with Restore in the
   const start = await refused(user);
 
   expect(start.textContent).toBe("Restore “Linux” in the background");
+  // Named for the item, it breaks as the name does and shrinks in its row, as the preview's (review B's P5B-M12).
+  expect([...start.classList]).toEqual(
+    expect.arrayContaining(["h-auto", "shrink", "whitespace-normal", "wrap-anywhere", "text-start"])
+  );
   expect(restoreOf("Linux")).toBeTruthy();
   expect(startsOf(server.asked)).toEqual([]);
   expect(screen.getByRole("status").textContent).toBe("");
@@ -390,6 +394,12 @@ test("a restore in the background whose answer was lost, the jobs not read, says
   );
   expect(within(status).getByRole("link", { name: "See the jobs" }).getAttribute("href")).toBe(transfer);
   expect(screen.getByRole("button", { name: /in the background/u })).toBe(start);
+
+  // Out of the notebook's pages into its settings, arrived at: the jobs' page's title takes the focus, not the body
+  // (M13/P5/S2, decision 924).
+  await user.click(within(status).getByRole("link", { name: "See the jobs" }));
+  const jobs = await screen.findByRole("heading", { level: 1, name: "Import, export and restore" });
+  await waitFor(() => expect(document.activeElement).toBe(jobs));
 });
 
 test("Restore in the background pressed twice sends one start: busy while it is out", async () => {
@@ -687,6 +697,11 @@ test("a restore in the background from the preview whose answer was lost, the jo
     )
   );
   expect(within(alert).getByRole("link", { name: "See the jobs" }).getAttribute("href")).toBe(transfer);
+
+  // Arrived at, as from the trash's list (M13/P5/S2, decision 924).
+  await user.click(within(alert).getByRole("link", { name: "See the jobs" }));
+  const jobs = await screen.findByRole("heading", { level: 1, name: "Import, export and restore" });
+  await waitFor(() => expect(document.activeElement).toBe(jobs));
 });
 
 // M8/P2B review A-I1: what the job's first batch does reaches the preview as the start's outcome is found out.

@@ -18,11 +18,14 @@ export function AttachmentDrop({
   notebook,
   parent,
   enabled,
+  className,
   children,
 }: {
   notebook: Notebook;
   parent: string | null;
   enabled: boolean;
+  /** Its place's classes, which its parent gives. */
+  className?: string;
   children: ReactNode;
 }) {
   const t = useT();
@@ -44,7 +47,15 @@ export function AttachmentDrop({
     }
   });
   return (
-    <div className={cn("space-y-4 rounded-md", drop.over && "ring-2 ring-primary ring-offset-4")} {...drop.handlers}>
+    <div
+      // Amber as the attachments' section's: one colour for the two zones of a page (M13/P5/S3, decision 933).
+      className={cn(
+        "space-y-4 rounded-md",
+        className,
+        drop.over && "ring-2 ring-accent ring-offset-4 ring-offset-background"
+      )}
+      {...drop.handlers}
+    >
       {folders && <Alert>{t("asset.folders")}</Alert>}
       {children}
     </div>

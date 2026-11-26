@@ -85,3 +85,13 @@ test("a held lock is read again once its lease should have ended", async () => {
 
   await waitFor(() => expect(screen.queryByRole("status")).toBeNull(), { timeout: 3000 });
 });
+
+// M13/P4/S1 (decision 868): the holder's name in a bdi, the note still the reading view's one status.
+test("who is editing the page is named in a bdi; the note is the page's one status", async () => {
+  await shown(bob);
+
+  const status = await screen.findByRole("status");
+  expect(status.textContent).toBe("Bob is editing this page.");
+  expect([...status.querySelectorAll("bdi")].map((name) => name.textContent)).toEqual(["Bob"]);
+  expect(screen.getAllByRole("status")).toEqual([status]);
+});

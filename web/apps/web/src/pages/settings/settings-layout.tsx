@@ -1,42 +1,52 @@
+import { observer } from "mobx-react-lite";
+import { createPortal } from "react-dom";
 import { Outlet, useLocation } from "react-router";
 
 import { useDocumentTitle } from "../../app/document-title";
-import { NavItem } from "../../components/nav-item";
+import { useShellColumn } from "../../app/layout";
+import {
+  personalSections,
+  sectionAt,
+  SettingsDirectory,
+  SettingsTop,
+  useDirectoryWorkspace,
+} from "../../app/settings-directory";
+import { SettingsPage } from "../../app/settings-page";
+import { Drawer, ShellSidebar, useDrawer } from "../../app/shell-sidebar";
 import { useT } from "../../i18n/i18n";
-import type { MessageKey } from "../../i18n/messages/en";
-
-/** The settings' pages, in the order the navigation lists them (M1/P6 design 3.2). */
-const sections: readonly { path: string; label: Extract<MessageKey, `settings.${string}`> }[] = [
-  { path: "/settings/profile", label: "settings.profile" },
-  { path: "/settings/security", label: "settings.security" },
-  { path: "/settings/tokens", label: "settings.tokens" },
-];
 
 /**
- * SettingsLayout is the navigation of the settings and the page chosen:
- * beside it on a wide screen, below it on a narrow one. The link of the
- * page shown has aria-current.
+ * SettingsLayout is the account's settings in the settings' mode (M13/P3/S1; 00-M13 4.4.1): outside any workspace's
+ * shell, it draws its own left column (decision 810), their directory, its drawer below md its own (useDrawer, an
+ * ancestor of the pages: its effects after theirs), the workspace it offers the one they were entered from or this
+ * device showed last (useDirectoryWorkspace); beside it the page chosen, its name the h1 (SettingsPage), keyed by the
+ * page: each page's takes the arrival focus as it mounts. No search box, nor its keys: Mod+K and Mod+Shift+F are the
+ * browser's here (decision 819).
  */
-export function SettingsLayout() {
+export const SettingsLayout = observer(function SettingsLayout() {
   const t = useT();
   const { pathname } = useLocation();
-  const shown = sections.find(({ path }) => path === pathname);
+  const shown = sectionAt(personalSections, "/settings", pathname);
   useDocumentTitle(shown && t(shown.label), t("settings.title"));
-  return (
-    <div className="mx-auto max-w-4xl space-y-6">
-      <h1 className="text-2xl font-semibold">{t("settings.title")}</h1>
-      <div className="flex flex-col gap-6 md:flex-row">
-        <nav aria-label={t("settings.title")} className="flex gap-1 md:w-48 md:shrink-0 md:flex-col">
-          {sections.map(({ path, label }) => (
-            <NavItem key={path} to={path}>
-              {t(label)}
-            </NavItem>
-          ))}
-        </nav>
-        <div className="min-w-0 flex-1">
-          <Outlet />
-        </div>
-      </div>
-    </div>
+  const column = useShellColumn();
+  const drawer = useDrawer();
+  const workspace = useDirectoryWorkspace();
+  const left = (
+    <ShellSidebar drawer={drawer} place={t("settings.title")} top={<SettingsTop fallback={workspace} />}>
+      <SettingsDirectory here="personal" workspace={workspace} />
+    </ShellSidebar>
   );
-}
+  return (
+    <Drawer value={drawer.actions}>
+      {column !== null && createPortal(left, column)}
+      {/* The index's redirect has no page of its own: its Outlet alone, for a commit. */}
+      {shown === undefined ? (
+        <Outlet />
+      ) : (
+        <SettingsPage key={shown.path} title={t(shown.label)}>
+          <Outlet />
+        </SettingsPage>
+      )}
+    </Drawer>
+  );
+});

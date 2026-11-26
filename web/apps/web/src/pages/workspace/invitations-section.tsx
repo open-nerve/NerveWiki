@@ -1,3 +1,4 @@
+import { Mail } from "lucide-react";
 import { observer } from "mobx-react-lite";
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import useSWR from "swr";
@@ -6,6 +7,8 @@ import { ConfirmDialog } from "../../app/confirm-dialog";
 import { useForm } from "../../app/form";
 import { invitationLink } from "../../app/invitation-link";
 import { NotLoaded } from "../../app/not-loaded";
+import { listLineClass, listTextClass, SettingsCard, SettingsSection, stackedRowClass } from "../../app/settings-page";
+import { EmptyState } from "../../components/empty-state";
 import { FormField } from "../../components/form-field";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
@@ -13,6 +16,7 @@ import { Label } from "../../components/ui/label";
 import { NativeSelect } from "../../components/ui/native-select";
 import { formatDate } from "../../i18n/format";
 import { useT } from "../../i18n/i18n";
+import { cn } from "../../lib/cn";
 import type { WorkspaceInvitation } from "../../services/invitation.service";
 import type { WorkspaceRole } from "../../services/member.service";
 import type { Workspace } from "../../services/workspace.service";
@@ -22,7 +26,8 @@ import { RoleOptions } from "./role-options";
 /**
  * InvitationsSection is the workspace's pending invitations, an admin's
  * (M2/P6 design 3.3): one invites an address, then copies the link and
- * sends it; the server sends no mail.
+ * sends it; the server sends no mail. A group of the members page, its
+ * card the form, then the list (M13/P3/S2, decisions 821, 838).
  */
 export const InvitationsSection = observer(function InvitationsSection({ workspace }: { workspace: Workspace }) {
   const invitations = useInvitations(workspace);
@@ -35,12 +40,20 @@ export const InvitationsSection = observer(function InvitationsSection({ workspa
 
   let rows;
   if (list === undefined) {
-    rows = <NotLoaded error={error} retry={() => void mutate()} />;
+    rows = (
+      <div className="px-4.5 py-3.5">
+        <NotLoaded error={error} retry={() => void mutate()} />
+      </div>
+    );
   } else if (list.length === 0) {
-    rows = <p className="text-muted-foreground">{t("invitations.empty")}</p>;
+    rows = (
+      <EmptyState icon={Mail} size="card">
+        {t("invitations.empty")}
+      </EmptyState>
+    );
   } else {
     rows = (
-      <ul aria-label={t("invitations.title")} className="divide-y rounded-md border">
+      <ul aria-label={t("invitations.title")} className="divide-y divide-border">
         {list.map((invitation) => (
           <InvitationRow
             key={invitation.id}
@@ -58,19 +71,18 @@ export const InvitationsSection = observer(function InvitationsSection({ workspa
   }
 
   return (
-    <section className="space-y-4">
-      <div className="max-w-xl space-y-1">
-        <h2 ref={heading} tabIndex={-1} className="text-lg font-semibold outline-none">
-          {t("invitations.title")}
-        </h2>
-        <p className="text-sm text-muted-foreground">{t("invitations.body")}</p>
-      </div>
-      <InviteForm workspace={workspace} />
-      {rows}
-      <output className="block text-sm text-muted-foreground">
+    <SettingsSection title={t("invitations.title")} heading={heading}>
+      <p className="max-w-2xl px-0.5 text-sm text-muted-foreground">{t("invitations.body")}</p>
+      <SettingsCard>
+        <div className="px-4.5 py-4">
+          <InviteForm workspace={workspace} />
+        </div>
+        {rows}
+      </SettingsCard>
+      <output className="block px-0.5 text-sm text-muted-foreground empty:absolute">
         {copied === undefined ? "" : t("invitations.copied", { email: copied })}
       </output>
-    </section>
+    </SettingsSection>
   );
 });
 
@@ -127,23 +139,25 @@ function InviteForm({ workspace }: { workspace: Workspace }) {
             }}
           />
         </div>
-        <div className="space-y-2">
+        {/* Below md the form's whole width, as the address's field is (M13 closeout, decision 970). */}
+        <div className="space-y-1.5 max-md:w-full">
           <Label htmlFor={roleId}>{t("invitations.role")}</Label>
           <NativeSelect
             id={roleId}
             name="role"
             value={role}
             onChange={(event) => setRole(event.target.value as WorkspaceRole)}
+            className="block max-md:w-full"
           >
             <RoleOptions />
           </NativeSelect>
         </div>
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <Button type="submit" disabled={sending}>
           {t("invitations.invite")}
         </Button>
-        <output className="text-sm text-muted-foreground">
+        <output className="min-w-0 text-sm break-words text-muted-foreground">
           {invited === undefined ? "" : t("invitations.invited", { email: invited })}
         </output>
       </div>
@@ -190,10 +204,10 @@ const InvitationRow = observer(function InvitationRow({
   }
 
   return (
-    <li className="space-y-3 p-4">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="min-w-0 space-y-1">
-          <p className="font-medium break-all">{invitation.email}</p>
+    <li className={stackedRowClass}>
+      <div className={listLineClass}>
+        <div className={cn(listTextClass, "space-y-1")}>
+          <p className="text-sm font-medium break-all">{invitation.email}</p>
           <p className="text-sm text-muted-foreground">
             {t(`role.${invitation.role}`)} ·{" "}
             {t("invitations.invitedOn", { date: formatDate(invitation.created_at, preferences.locale) })}
@@ -202,6 +216,8 @@ const InvitationRow = observer(function InvitationRow({
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
+            size="sm"
+            shape="pill"
             aria-label={t("invitations.copyLabel", { email: invitation.email })}
             onClick={() => void copy()}
           >
@@ -209,7 +225,12 @@ const InvitationRow = observer(function InvitationRow({
           </Button>
           <ConfirmDialog
             trigger={
-              <Button variant="outline" aria-label={t("invitations.withdrawLabel", { email: invitation.email })}>
+              <Button
+                variant="outline"
+                size="sm"
+                shape="pill"
+                aria-label={t("invitations.withdrawLabel", { email: invitation.email })}
+              >
                 {t("invitations.withdraw")}
               </Button>
             }

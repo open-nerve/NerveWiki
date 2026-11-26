@@ -7,6 +7,7 @@ import { useArrivalFocus } from "../app/arrival";
 import { useDocumentTitle } from "../app/document-title";
 import { useMounted } from "../app/mounted";
 import { NotLoaded } from "../app/not-loaded";
+import { EntryCard, entryTitleClass } from "../components/entry-card";
 import { useT } from "../i18n/i18n";
 import { useStore } from "../stores/context";
 
@@ -16,7 +17,8 @@ import { useStore } from "../stores/context";
  * while the creation was out. While this server's creation
  * is off, it says how one gets into a workspace instead: it is also where /
  * lands an account without one, its heading focused on arrival (M3/P4
- * design 3.5).
+ * design 3.5). In the entry's card, under the product's name (M13/P5/S1,
+ * decision 920).
  */
 export const CreateWorkspacePage = observer(function CreateWorkspacePage() {
   const { instance } = useStore();
@@ -28,8 +30,8 @@ export const CreateWorkspacePage = observer(function CreateWorkspacePage() {
   useDocumentTitle(t("createWorkspace.title"));
   const info = instance.info;
   return (
-    <section className="mx-auto max-w-sm space-y-6">
-      <h1 ref={heading} tabIndex={-1} className="text-2xl font-semibold outline-none">
+    <EntryCard>
+      <h1 ref={heading} tabIndex={-1} className={entryTitleClass}>
         {t("createWorkspace.title")}
       </h1>
       {info === undefined ? (
@@ -44,8 +46,8 @@ export const CreateWorkspacePage = observer(function CreateWorkspacePage() {
           }}
         />
       ) : (
-        <p className="text-muted-foreground">{t("createWorkspace.off")}</p>
+        <p className="text-sm text-muted-foreground">{t("createWorkspace.off")}</p>
       )}
-    </section>
+    </EntryCard>
   );
 });

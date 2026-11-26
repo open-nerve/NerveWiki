@@ -194,8 +194,7 @@ async function expectSignedInOn(
   path: string,
   section: string
 ): Promise<void> {
-  await expect(page.getByRole("heading", { level: 1, name: "Settings", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { level: 2, name: section, exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: section, exact: true })).toBeVisible();
   await expect(page).toHaveURL(path);
   await expect.poll(() => generationIn(page)).toBe(2);
   expect((await sessionOf(db, tokens.refresh_token)).revoked_at).toBeNull();
@@ -308,7 +307,7 @@ test("A15 (page): leaving through the helper at that moment waits for the first 
   await leaving;
 
   expect(routes.problems).toEqual([]);
-  await expectSignedInOn(page, pageWatch, db, tokens, "/settings/security", "Password");
+  await expectSignedInOn(page, pageWatch, db, tokens, "/settings/security", "Security");
 });
 
 test("A15 (page): leaving through the helper while a read is out waits for its answer", async ({
@@ -527,7 +526,7 @@ test("A15 (page): leaving through the helper while a read goes out as the helper
   });
 
   await goto(page, "/settings/profile");
-  await expect(page.getByRole("heading", { level: 2, name: "Profile", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Profile", exact: true })).toBeVisible();
   // As a page that renders again after the story's last step may (LW3 on CI run 43686031128): the document sends
   // a read while the helper reads it, here from inside the helper's navigator.locks.query, 300 ms long.
   await page.evaluate(() => {
@@ -593,7 +592,7 @@ test("A15 (page): a read left out by the escape is not the next document's to wa
   });
   // With a fragment, which the reload's document request does not carry and its commit does.
   await goto(page, "/settings/profile#a15");
-  await expect(page.getByRole("heading", { level: 2, name: "Profile", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Profile", exact: true })).toBeVisible();
   await page.evaluate((url) => {
     setTimeout(() => {
       void fetch(url)
@@ -604,7 +603,7 @@ test("A15 (page): a read left out by the escape is not the next document's to wa
   order.length = 0;
   holdTheDocument = true;
   await reload(page, { inFlight: "leave" });
-  await expect(page.getByRole("heading", { level: 2, name: "Profile", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Profile", exact: true })).toBeVisible();
   // Sent once the next document was asked for, before it came: Chromium and Firefox then report nothing more for
   // the read. WebKit sends nothing from a document once the next one is asked for (the third cell), and the read
   // never goes out.
@@ -693,7 +692,7 @@ test("A15 (page): after a navigation that never commits (204), a move within the
   const read = await holdAReadOfThisDocument(page);
   await page.route("**/a15-no-content", (route) => route.fulfill({ status: 204 }));
   await goto(page, "/settings/profile");
-  await expect(page.getByRole("heading", { level: 2, name: "Profile", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Profile", exact: true })).toBeVisible();
   // A document asked for and answered 204: the page stays where it is, and nothing commits.
   const [noContent] = await Promise.all([
     page.waitForRequest((request) => request.url().endsWith("/a15-no-content")),
@@ -721,7 +720,7 @@ test("A15 (page): a move within the document to the address it committed is not 
   const page = await signedInPage(await registerOnboarded(api, emailFor(testInfo)));
   const read = await holdAReadOfThisDocument(page);
   await goto(page, "/settings/profile");
-  await expect(page.getByRole("heading", { level: 2, name: "Profile", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Profile", exact: true })).toBeVisible();
   await read.send();
   // The address the document committed, replaced with itself, as a router may.
   await Promise.all([

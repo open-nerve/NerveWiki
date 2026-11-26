@@ -4,11 +4,15 @@ import useSWR from "swr";
 
 import { useDocumentTitle } from "../app/document-title";
 import { keepNext } from "../app/next-path";
+import { EntryCard, entryTitleClass } from "../components/entry-card";
 import { useT } from "../i18n/i18n";
 import { useStore } from "../stores/context";
 import { CredentialsForm, signInProblems } from "./credentials-form";
 
-/** SignInPage signs in with an e-mail address and a password; it links to sign-up while the instance takes new accounts. */
+/**
+ * SignInPage signs in with an e-mail address and a password; it links to sign-up while the instance takes new accounts.
+ * In the entry's card, under the product's name (M13/P5/S1, decision 920).
+ */
 export const SignInPage = observer(function SignInPage() {
   const { auth, instance } = useStore();
   const t = useT();
@@ -17,8 +21,8 @@ export const SignInPage = observer(function SignInPage() {
   useSWR("instance", () => instance.load());
 
   return (
-    <section className="mx-auto max-w-sm space-y-6">
-      <h1 className="text-2xl font-semibold">{t("signIn.title")}</h1>
+    <EntryCard>
+      <h1 className={entryTitleClass}>{t("signIn.title")}</h1>
       <CredentialsForm
         passwordAutoComplete="current-password"
         submitLabel={t("signIn.submit")}
@@ -33,6 +37,6 @@ export const SignInPage = observer(function SignInPage() {
           </Link>
         </p>
       )}
-    </section>
+    </EntryCard>
   );
 });
