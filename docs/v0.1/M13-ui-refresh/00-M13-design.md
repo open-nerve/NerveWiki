@@ -4,7 +4,7 @@
 |---|---|
 | 里程碑 | M13 界面焕新（`M13-ui-refresh`） |
 | 日期 | 2026-11-22（初稿；同日照三份设计审查修订、照修订核对第 1 轮再修订、第 2 轮之后补上最后的 Nit，[审查记录](reviews/M13-design-review.md)） |
-| 状态 | 设计定稿，负责人 2026-11-22 批准；P1 完成；P2 完成；P3 完成；P4 完成；P5 设计定稿，S1、S2 已合并，S3 已审查、待合并 |
+| 状态 | 设计定稿，负责人 2026-11-22 批准；P1 完成；P2 完成；P3 完成；P4 完成；P5 设计定稿，S1、S2、S3 已合并 |
 | 依赖 | M0–M12 全部（改的是它们的网页）；M12 的发布等 M13 收尾之后再做（负责人 2026-11-22 第 5 问，第 11 节） |
 | 上级文档 | [v0.1 总体设计](../v0.1-design.md) 第 9、10、12、13.2、13.4 节；[M12 总设计](../M12-release/00-M12-design.md) 第 7 节"提交说明"、第 12 节"收尾与发布"一行；移交 [v0.2/handoffs/M12-polish.md](../../v0.2/handoffs/M12-polish.md)、[v0.1.1/handoffs/M12-after-release.md](../../v0.1.1/handoffs/M12-after-release.md) |
 | 视觉参照 | 负责人认可的三份样稿：[mockups/palette.html](mockups/palette.html)（外框与配色，选"琥珀"）、[mockups/settings.html](mockups/settings.html)（设置，选 A）、[mockups/reading.html](mockups/reading.html)（阅读与编辑）。浏览器直接打开，自带切换。样稿是外观的依据，不是代码：间距、色值、字号照它；结构、行为与可访问性照本文与 13.2；本文与样稿不同之处（例如属性条、焦点圈、编辑时的"保存"）在正文写明并以本文为准；阅读视图的色值以 reading.html 为准 |
@@ -548,7 +548,7 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
 | P2 新外框（S1–S3） | [02-P2](02-P2-shell.md) | 完成 | [设计审查](reviews/P2-design-review.md)；[S1](reviews/P2-S1-shell-account-review.md)；[S2](reviews/P2-S2-notebooks-tree-review.md)；[S3](reviews/P2-S3-search-drawer-review.md) | S1 `fdad6b9e`；S2 `70338fc4`；S3 `82838aac` |
 | P3 设置界面（S1、S2） | [03-P3](03-P3-settings.md) | 完成 | [设计审查](reviews/P3-design-review.md)；[S1](reviews/P3-S1-settings-mode-review.md)；[S2](reviews/P3-S2-workspace-notebook-settings-review.md) | S1 `f32b0762`；S2 `12b0b734` |
 | P4 阅读与编辑（S1–S3） | [04-P4](04-P4-reading.md) | 完成 | [设计审查](reviews/P4-design-review.md)；[S1](reviews/P4-S1-head-strip-panel-review.md)；[S2](reviews/P4-S2-body-code-diagrams-review.md)；[S3](reviews/P4-S3-editor-outline-save-review.md) | S1 `715923dd`；S2 `cea66d69`；S3 `4f2fde3b`；CI 的两处 `9871c7d4` |
-| P5 其余页面（S1–S3） | [05-P5](05-P5-pages.md) | 设计定稿；S1、S2 已合并，S3 已审查、待合并 | [设计审查](reviews/P5-design-review.md)；[S1](reviews/P5-S1-homes-entry-review.md)；[S2](reviews/P5-S2-lists-review.md)；[S3](reviews/P5-S3-versions-review.md) | S1 `326034d3`；S2 `d2c1c8ee`；S3 `<待填>` |
+| P5 其余页面（S1–S3） | [05-P5](05-P5-pages.md) | 设计定稿；S1、S2、S3 已合并 | [设计审查](reviews/P5-design-review.md)；[S1](reviews/P5-S1-homes-entry-review.md)；[S2](reviews/P5-S2-lists-review.md)；[S3](reviews/P5-S3-versions-review.md) | S1 `326034d3`；S2 `d2c1c8ee`；S3 `75f020a4` |
 | 收尾 | — | 未开始 | — | — |
 
 ## 13. 变更记录
@@ -580,4 +580,4 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
 - 2026-11-25：照 P5 的设计修订（[05-P5](05-P5-pages.md) 2.1；[设计审查](reviews/P5-design-review.md)，主持者的决定 912–945）：P5 分成三个 Step（第 7 节的开头、表与"总体设计的修订"第 1 条的注，第 9 节的两处）；4.2.3 已登录的邀请页的"回到工作区"；4.3"加载"不加骨架；4.6 的虚线卡、文档类的三页与导入导出、出错页的去路；头的状态与第 12 节 P5 一行。
 - 2026-11-25：P5/S1 实施与审查完成（[审查记录](reviews/P5-S1-homes-entry-review.md)；主持者的决定 946–951：页读取中与页不在时的列照读到之后的页排，卡片里的徽记紧跟名字，入口卡片里的正文一律 14 px，居中的操作是小胶囊，总体设计 9.2 的空状态那一句在 S1 只说两个首页与设置，`PageColumn` 只给页的两支留右栏的地方）；4.8 的 UI1 另两格在三种浏览器里核对两个首页、入口的卡片、邀请页与 404 在 375 与 320 宽，UP1 另核对横幅在页读到之前与之后同一处；合并 `326034d3`。
 - 2026-11-26：P5/S2 实施与审查完成（[审查记录](reviews/P5-S2-lists-review.md)；主持者的决定 952–954：提示框里没有断点的名字折行、警示对话框写明一列，可能用手指点的设备上行内的次要操作静止也显着，变更集页的空头一行对谁都只有面包屑）；4.8 的 TB1 新的一格在 375 宽核对回收站预览里没有断点的长名字，hi3、mc3 核对"只看此人"的显出，UP1 另核对变更集页与回收站的预览读到之前与之后横幅同一处；合并 `d2c1c8ee`。
-- 2026-11-26：P5/S3 实施与审查完成（[审查记录](reviews/P5-S3-versions-review.md)；主持者的决定 955–960：升级的检查与报告里"都没问题"的摘要同健康页，升级页两节的正文是 `text-sm`，版本页早退的那一格按谁写这本笔记本定，对话框里靠右的一行按钮放不下时各占一行，右栏版本行的时间与种类各在一行里，导入的"Stop the upload"不理连点、表单的按钮不理按住的键）；4.8 的 hi2 另在 320 宽核对版本页的标题一行、"还原"在标题之上与它那一格之内，hi1、hi2 读右栏版本行的"当前"接在作者之后，as1 核对附件的"操作"在菜单开着时显着，UP1 另核对版本页读到之前与之后横幅在同一处，lw3、tr2、up3、hi5 在 320 宽核对对话框里的按钮都在框内，tr2 另核对双击"Import"的第二下落在"Stop the upload"上、上传不停；全部 e2e 在 S3 合并之前的门禁里完整跑过，记了时间（第 9 节）；`NotebookLayout` 的回退删了，横幅总在每个笔记本页每一支的列里；合并 `<待填>`。
+- 2026-11-26：P5/S3 实施与审查完成（[审查记录](reviews/P5-S3-versions-review.md)；主持者的决定 955–960：升级的检查与报告里"都没问题"的摘要同健康页，升级页两节的正文是 `text-sm`，版本页早退的那一格按谁写这本笔记本定，对话框里靠右的一行按钮放不下时各占一行，右栏版本行的时间与种类各在一行里，导入的"Stop the upload"不理连点、表单的按钮不理按住的键）；4.8 的 hi2 另在 320 宽核对版本页的标题一行、"还原"在标题之上与它那一格之内，hi1、hi2 读右栏版本行的"当前"接在作者之后，as1 核对附件的"操作"在菜单开着时显着，UP1 另核对版本页读到之前与之后横幅在同一处，lw3、tr2、up3、hi5 在 320 宽核对对话框里的按钮都在框内，tr2 另核对双击"Import"的第二下落在"Stop the upload"上、上传不停；全部 e2e 在 S3 合并之前的门禁里完整跑过，记了时间（第 9 节）；`NotebookLayout` 的回退删了，横幅总在每个笔记本页每一支的列里；合并 `75f020a4`。
