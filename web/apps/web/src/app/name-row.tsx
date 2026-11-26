@@ -8,6 +8,7 @@ import { useFocusLeaving } from "../lib/focus-leaving";
 import type { FieldError } from "../services/api";
 import { useForm, type LocalProblems } from "./form";
 import type { FieldMessage } from "./problem-messages";
+import { composing } from "./shortcuts";
 import {
   rowClass,
   rowControlClass,
@@ -46,7 +47,10 @@ type NameRowProps<Field extends string> = {
  * while its save was out keeps the edit, as RenameForm has it. A name other than the current only in its blanks is
  * saved without a request. The field's problem shows under it, its description otherwise describes it: one id, as
  * e2e's noteOf reads it; a refusal of another kind shows under the row. Both say what was wrong with a draft: with
- * the name typed back as it is, they go too (review A's M1).
+ * the name typed back as it is, they go too (review A's M1). Escape takes a draft back to the current name, Save and
+ * what was said of it going too, the focus staying in the field, as a select's takes back the option the keys stepped
+ * to (00-M13 4.4.3; M13 closeout, decision 965); the key goes no further up the page then. With no draft, or while a
+ * composition goes on, the key is not the row's. Leaving the page drops a draft, as before.
  */
 export function NameRow<Field extends string>({
   current,
@@ -128,6 +132,14 @@ export function NameRow<Field extends string>({
               edits.current++;
               setDraft(event.target.value);
               setSaved(false);
+            }}
+            onKeyDown={(event) => {
+              if (event.key !== "Escape" || draft === undefined || composing(event.nativeEvent)) {
+                return;
+              }
+              event.preventDefault();
+              event.stopPropagation();
+              setDraft(undefined);
             }}
           />
           {/* Save's place, kept: the field does not move as it comes and goes (review B's M6). */}

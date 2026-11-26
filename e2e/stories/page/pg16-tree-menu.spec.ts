@@ -102,6 +102,14 @@ test("PG16 (page): the page shown has its row brought into the left column, whic
   expect(await area.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
   expect(await windowScroll()).toBe(0);
 
+  // The column's middle scrolls, which has Firefox make it a stop of Tab, nameless, between Search and Home: it is none
+  // (M13 closeout, review A's M13CA-M3). Playwright's WebKit on macOS tabs to fields alone, as the system has it.
+  if (testInfo.project.name !== "webkit") {
+    await page.getByRole("search").getByRole("button", { name: "Search", exact: true }).focus();
+    await page.keyboard.press("Tab");
+    await expect(page.locator("[data-shell]").getByRole("link", { name: "Home", exact: true })).toBeFocused();
+  }
+
   // Then twice by the quick switch, keys pressed before each (review B-I1).
   expect(await quickSwitchFor(page, "Page 01")).toEqual([["Page 01", ""]]);
   await page.keyboard.press("Enter");

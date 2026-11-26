@@ -146,7 +146,7 @@ export const SettingsTop = observer(function SettingsTop({ fallback }: { fallbac
         className="flex h-7.5 items-center gap-2.25 rounded-row px-2 text-row text-muted-foreground transition-colors duration-150 hover:bg-hover hover:text-foreground [&_svg]:size-4 [&_svg]:shrink-0"
       >
         <ChevronLeft aria-hidden />
-        <span className="min-w-0 truncate">
+        <span title={name} className="min-w-0 truncate">
           {name === undefined ? (
             t("settings.back")
           ) : (
@@ -171,7 +171,9 @@ function GroupTitle({ title, name }: { title: string; name?: string }) {
       {name !== undefined && (
         <>
           {" "}
-          <bdi className="min-w-0 truncate font-medium text-muted-foreground">{name}</bdi>
+          <bdi title={name} className="min-w-0 truncate font-medium text-muted-foreground">
+            {name}
+          </bdi>
         </>
       )}
     </p>

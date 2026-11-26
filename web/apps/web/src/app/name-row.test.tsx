@@ -1,4 +1,4 @@
-import { act, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, onTestFinished, test, vi } from "vitest";
 
@@ -241,4 +241,56 @@ test("not edited, the field follows the name changed elsewhere", async () => {
   await readAgain();
   await waitFor(() => expect(name.value).toBe("Ada Lovelace"));
   expect(save()).toBeNull();
+});
+
+// Escape takes a draft back to the name saved, Save going with it, as a select's Escape takes back the option the keys
+// stepped to (M13 closeout, decision 965; 00-M13 4.4.3): the focus stays in the field, nothing is sent, and the key
+// goes no further up the page. With nothing to take back, or while a composition is going, the key is not the row's.
+test("Escape takes the draft back to the name saved: Save goes, the field keeps the focus, nothing is sent; with no draft, or composing, the key is not the row's", async () => {
+  const user = userEvent.setup();
+  const server = profile();
+  const name = await field();
+  const heard: string[] = [];
+  const hear = (event: KeyboardEvent) => void heard.push(event.key);
+  document.addEventListener("keydown", hear);
+  onTestFinished(() => document.removeEventListener("keydown", hear));
+
+  await user.type(name, " Lovelace");
+  expect(save()).not.toBeNull();
+  heard.length = 0;
+  fireEvent.keyDown(name, { key: "Escape", isComposing: true });
+  expect(name.value).toBe("Ada Lovelace");
+  expect(heard).toEqual(["Escape"]);
+  heard.length = 0;
+
+  await user.keyboard("{Escape}");
+  expect(name.value).toBe("Ada");
+  expect(save()).toBeNull();
+  expect(document.activeElement).toBe(name);
+  expect(heard).toEqual([]);
+
+  await user.keyboard("{Escape}");
+  expect(heard).toEqual(["Escape"]);
+  await user.keyboard("{Enter}");
+  await settle();
+  expect(server.sent).toEqual([]);
+  expect(said()).toBe("");
+});
+
+// A problem the draft had goes with it, the field described as it was.
+test("Escape takes back a draft the server refused: its problem goes, the field described again", async () => {
+  const user = userEvent.setup();
+  profile(() => problem(422, "validation_failed", { errors: [{ field: "display_name", code: "too_long" }] }));
+  const name = await field();
+  const described = name.getAttribute("aria-describedby");
+
+  await user.clear(name);
+  await user.type(name, "Bob");
+  await user.keyboard("{Enter}");
+  await waitFor(() => expect(name.getAttribute("aria-invalid")).toBe("true"));
+
+  await user.keyboard("{Escape}");
+  expect(name.value).toBe("Ada");
+  expect(name.getAttribute("aria-invalid")).toBeNull();
+  expect(name.getAttribute("aria-describedby")).toBe(described);
 });

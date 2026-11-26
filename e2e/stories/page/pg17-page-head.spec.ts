@@ -160,6 +160,16 @@ test("PG17 (page): the page's head says who edited the page last, Edit kept wher
   expect(Math.abs((await box(column)).y), "the column's top at the page's end").toBeLessThanOrEqual(0.5);
   await page.evaluate(() => window.scrollTo(0, 0));
 
+  // The column scrolls itself, which has Firefox make it a stop of Tab after the page's last control: it is none, the
+  // next stop its first summary (M13 closeout, review A's M13CA-M3). Playwright's WebKit on macOS tabs to fields alone.
+  if (testInfo.project.name !== "webkit") {
+    expect(await column.evaluate((each) => each.scrollHeight > each.clientHeight), "the column scrolls").toBe(true);
+    await main.getByRole("button", { name: "Upload", exact: true }).focus();
+    await page.keyboard.press("Tab");
+    await expect(column.locator("summary").first()).toBeFocused();
+    await page.evaluate(() => window.scrollTo(0, 0));
+  }
+
   // A heading of the outline clicked: it shows 16px from the top, focused, its item the location.
   await item("Part 05").click();
   await expect(heading("Part 05")).toBeFocused();

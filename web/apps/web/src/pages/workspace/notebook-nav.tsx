@@ -76,7 +76,8 @@ export const NotebookNav = observer(function NotebookNav({ workspace }: { worksp
 /**
  * NotebookLink is a notebook's row in the list while another is open: its home's link, arrived at (decision 777),
  * the link going as its item turns into the open notebook's. Its ⌄, book and name where the open notebook's row has
- * them (decision 778); its text its name alone, which the stories read.
+ * them (decision 778); its text its name alone, which the stories read, cut short with its whole as its title (M13
+ * closeout, review A's M13CA-M1).
  */
 function NotebookLink({ workspace, notebook }: { workspace: Workspace; notebook: Notebook }) {
   return (
@@ -87,7 +88,9 @@ function NotebookLink({ workspace, notebook }: { workspace: Workspace; notebook:
     >
       <ChevronRight aria-hidden className="-mr-1 -ml-0.5 size-3.5 shrink-0 text-faint" />
       <Book aria-hidden className="size-4 shrink-0" />
-      <span className="min-w-0 truncate">{notebook.name}</span>
+      <span title={notebook.name} className="min-w-0 truncate">
+        {notebook.name}
+      </span>
     </Link>
   );
 }

@@ -352,8 +352,14 @@ export function ShellSidebar({
           className="flex flex-col bg-sidebar outline-none [overflow-anchor:none] max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:w-63 max-md:max-w-[85vw] max-md:border-r max-md:border-border max-md:shadow-dialog max-md:data-[drawer=closed]:invisible max-md:data-[drawer=closed]:-translate-x-full max-md:data-[drawer=open]:motion-safe:transition-[translate] md:sticky md:top-0 md:h-svh md:w-63 md:shrink-0 md:self-start md:border-r md:border-border"
         >
           <div className="space-y-2 px-2 pt-2.5 pb-1.5">{top}</div>
-          {/* pt-1: the area clips what overflows it, the first link's focus ring 2px out of it included. */}
-          <div data-sidebar-scroll className="min-h-0 flex-1 overflow-y-auto px-2 pt-1 pb-3 max-md:overscroll-contain">
+          {/* pt-1: the area clips what overflows it, the first link's focus ring 2px out of it included. Scrolling, it is
+              no stop of Tab, which Firefox makes it, nameless (M13 closeout, review A's M13CA-M3): the focus in it has
+              PageDown scroll it still. */}
+          <div
+            data-sidebar-scroll
+            tabIndex={-1}
+            className="min-h-0 flex-1 overflow-y-auto px-2 pt-1 pb-3 max-md:overscroll-contain"
+          >
             {children}
           </div>
           <div className="shrink-0 border-t border-border p-2">

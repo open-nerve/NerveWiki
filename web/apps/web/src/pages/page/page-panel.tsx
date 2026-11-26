@@ -53,6 +53,8 @@ const ColumnOutline = observer(function ColumnOutline({
  * size, nor have the window follow. Its outline marks the section read
  * only while it is open beside the page (decision 886). data-page-panel is
  * where the outline watches the reader (its id, React's, has colons).
+ * Scrolling itself, it is no stop of Tab, which Firefox makes it, before its
+ * first control (M13 closeout, review A's M13CA-M3, as the left column's).
  */
 export function PagePanel({
   id,
@@ -80,6 +82,7 @@ export function PagePanel({
       aria-label={t("page.panel")}
       data-open={open}
       data-page-panel
+      tabIndex={-1}
       className="min-w-0 space-y-6 max-xl:mx-auto max-xl:mt-10 max-xl:max-w-180 xl:sticky xl:top-0 xl:-me-10 xl:-mt-3 xl:-mb-10 xl:h-svh xl:w-63 xl:shrink-0 xl:overflow-y-auto xl:border-l xl:border-border xl:pt-16 xl:pr-4 xl:pb-5 xl:pl-4.5 xl:[overflow-anchor:none] xl:data-[open=false]:hidden"
     >
       <ColumnOutline editing={editing} outline={outline} notebook={notebook} page={page.id} active={open && beside} />

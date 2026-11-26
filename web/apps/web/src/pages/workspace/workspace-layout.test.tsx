@@ -115,22 +115,72 @@ test("the switcher heads the column, before the search, outside the navigation, 
     [
       ["Home", "/acme", "page"],
       // Straight to the first page: no index's redirect (M13/P3/S1, decision 816).
-      ["Settings", "/acme/settings/general", null],
+      ["Workspace settings", "/acme/settings/general", null],
     ]
   );
+});
+
+// The column's Workspace settings, not the account menu's Settings, which are the account's (M13 closeout, decision
+// 964; 00-M13 4.2.1): each language's.
+test.each([
+  ["en", "Workspace settings"],
+  ["zh-CN", "工作区设置"],
+] as const)("in %s the navigation's way to the workspace's settings is named %s", async (locale, name) => {
+  const app = withWorkspaces();
+  app.preferences.setLocale(locale);
+  renderApp("/acme", app);
+
+  const nav = await screen.findByRole("navigation", { name: "Acme" });
+  expect(within(nav).getByRole("link", { name }).getAttribute("href")).toBe("/acme/settings/general");
+});
+
+// A name cut short has its whole as its title (M13 closeout, review A's M13CA-M1, as decision 931 has the cards); the
+// switcher's menu is as wide as its button at least, wider for a long name, up to 20rem and the room it has (decision
+// 971).
+test("the switcher's name and its menu's names have their whole as a title; its menu widens for a long name, up to 20rem", async () => {
+  const user = userEvent.setup();
+  const tokyo = { ...acme, name: "Acme Engineering Knowledge Base – Tokyo Office" };
+  const osaka = { ...workspaceJSON, name: "Acme Engineering Knowledge Base – Osaka Office" };
+  renderApp("/acme", signedInApp({ "GET /api/v0/workspaces": () => json({ data: [tokyo, osaka] }) }));
+
+  const switcher = await screen.findByRole("button", { name: tokyo.name, description: "Switch workspace" });
+  expect(within(switcher).getByText(tokyo.name).getAttribute("title")).toBe(tokyo.name);
+  await user.click(switcher);
+  const items = await screen.findAllByRole("menuitemradio");
+  expect(items.map((item) => within(item).getByText(/^Acme/).getAttribute("title"))).toEqual([tokyo.name, osaka.name]);
+  const menu = screen.getByRole("menu");
+  expect([...menu.classList]).toEqual(
+    expect.arrayContaining([
+      "min-w-(--radix-dropdown-menu-trigger-width)",
+      "max-w-[min(20rem,var(--radix-dropdown-menu-content-available-width))]",
+    ])
+  );
+  expect(menu.classList.contains("w-(--radix-dropdown-menu-trigger-width)")).toBe(false);
+});
+
+// The column's middle, which scrolls, is no stop of Tab: Firefox makes an area that scrolls one, nameless (M13
+// closeout, review A's M13CA-M3). Focusable by a script alone, it still scrolls as the focus in it has PageDown.
+test("the column's middle, which scrolls, is no stop of Tab", async () => {
+  renderApp("/acme", withWorkspaces());
+  await screen.findByRole("navigation", { name: "Acme" });
+
+  const area = document.querySelector("[data-sidebar-scroll]");
+  expect(area?.getAttribute("tabindex")).toBe("-1");
 });
 
 // The settings' mode (M13/P3/S1, decisions 810, 816, 819): the column turns their directory, the same element, its
 // drawer and strip kept; the search box goes, the keys left to the browser.
 
-test("the navigation's Settings is arrived at: the column, the same element, turns the settings' directory, without the search", async () => {
+test("the navigation's Workspace settings is arrived at: the column, the same element, turns the settings' directory, without the search", async () => {
   const user = userEvent.setup();
   const { router } = renderApp("/acme", withWorkspaces());
   await screen.findByRole("heading", { name: "Acme" });
   const column = document.querySelector("[data-shell]");
   expect(screen.getByRole("searchbox")).toBeTruthy();
 
-  await user.click(within(screen.getByRole("navigation", { name: "Acme" })).getByRole("link", { name: "Settings" }));
+  await user.click(
+    within(screen.getByRole("navigation", { name: "Acme" })).getByRole("link", { name: "Workspace settings" })
+  );
 
   const title = await screen.findByRole("heading", { level: 1, name: "General" });
   expect(router.state.location.pathname).toBe("/acme/settings/general");

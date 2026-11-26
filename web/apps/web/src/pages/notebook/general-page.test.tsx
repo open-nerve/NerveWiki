@@ -141,6 +141,8 @@ test("an admin opens the notebook to the workspace as it is chosen; back in the 
   // A select, which goes out as the pointer chooses (M13/P3/S2, decision 825): no Save.
   const select = await accessSelect();
   expect([select.value, hintOf(select)]).toEqual(["none", hints.none]);
+  // Below md the row's whole width, as the name's field is (M13 closeout, decision 970): jsdom lays nothing out.
+  expect(select.classList.contains("max-md:w-full")).toBe(true);
   await user.selectOptions(select, "Workspace can edit");
 
   await waitFor(() => expect(accessRow(select).getByRole("status").textContent).toBe("Saved."));

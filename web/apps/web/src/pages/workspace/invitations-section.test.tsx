@@ -122,7 +122,14 @@ test("an admin invites an address as a role; the invitation comes first, and the
   renderApp("/lab/settings/members", app);
 
   await user.type(await screen.findByLabelText("E-mail address"), "Dee@Example.com");
-  await user.selectOptions(screen.getByLabelText("Role"), "admin");
+  // Below md the role's select is the form's whole width, as the address's field is (M13 closeout, decision 970): it
+  // and its field's wrapper, which is as wide as its content otherwise. jsdom lays nothing out.
+  const role = screen.getByLabelText("Role");
+  expect([role.classList.contains("max-md:w-full"), role.parentElement?.classList.contains("max-md:w-full")]).toEqual([
+    true,
+    true,
+  ]);
+  await user.selectOptions(role, "admin");
   await user.click(screen.getByRole("button", { name: "Invite" }));
 
   expect(await screen.findByText("Invited dee@example.com. Copy the link and send it to them.")).toBeTruthy();

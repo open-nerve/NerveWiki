@@ -143,6 +143,16 @@ test("the account's button is named for its display name alone, its avatar's let
   expect(button.closest("[data-shell]")).not.toBeNull();
 });
 
+// A name cut short has its whole as its title, on its text: the button's name it is already (M13 closeout, review A's
+// M13CA-M1). The column's row and the top right's.
+test.each(["/lab", "/create-workspace"])("at %s the account's name has its whole as its title", async (path) => {
+  renderApp(path, signedInApp());
+
+  const button = await screen.findByRole("button", { name: "Ada" });
+  expect([button.getAttribute("title"), button.querySelector("[title]")?.getAttribute("title")]).toEqual([null, "Ada"]);
+  expect(button.querySelector("[title]")?.textContent).toBe("Ada");
+});
+
 test("the account's menu: Settings, Appearance, Sign out, then the version", async () => {
   const user = userEvent.setup();
   renderApp("/lab", signedInApp());

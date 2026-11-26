@@ -34,7 +34,7 @@ async function plansOfAcme(api: ApiClient, signedInPage: (tokens: AuthTokens) =>
   return { page, adminId, account: displayNameOf(adminEmail), workspace, notebook, notes };
 }
 
-test("UI2 (page): the settings are entered from the column's Settings, a notebook's cog and the account's menu, each arrived at; Back goes back where they were entered from", async ({
+test("UI2 (page): the settings are entered from the column's Workspace settings, a notebook's cog and the account's menu, each arrived at; Back goes back where they were entered from", async ({
   api,
   signedInPage,
 }, testInfo) => {
@@ -70,10 +70,10 @@ test("UI2 (page): the settings are entered from the column's Settings, a noteboo
   await expect(pageHeading(page, "Notes")).toBeFocused();
   await expect(pageTree(page, "Plans")).toBeVisible();
 
-  // The column's Settings, from the workspace's home.
+  // The column's Workspace settings, from the workspace's home (M13 closeout, decision 964).
   await workspaceNav(page, "Acme").getByRole("link", { name: "Home", exact: true }).click();
   await expect(workspaceHeading(page, "Acme")).toBeVisible();
-  await workspaceNav(page, "Acme").getByRole("link", { name: "Settings", exact: true }).click();
+  await workspaceNav(page, "Acme").getByRole("link", { name: "Workspace settings", exact: true }).click();
   await expect(page).toHaveURL(`/${slug}/settings/general`);
   await expect(settingsTitle(page, "General")).toBeFocused();
   await settingsBack(page, "Acme").click();

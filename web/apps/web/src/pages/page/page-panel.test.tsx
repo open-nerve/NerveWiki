@@ -186,6 +186,8 @@ test("the right column comes after the page's content and its subpages", async (
   const article = screen.getByRole("article");
   expect(article.compareDocumentPosition(panel()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(subpages.compareDocumentPosition(panel()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  // Scrolling itself from xl up, it is no stop of Tab, which Firefox makes it (M13 closeout, review A's M13CA-M3).
+  expect(panel().getAttribute("tabindex")).toBe("-1");
 });
 
 /** editOutline is the right column's outline while the page is edited: its headings' buttons. */

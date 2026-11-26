@@ -26,7 +26,10 @@ import { useStore, useWorkspaces } from "../../stores/context";
  * workspaces, it is also the way to create one (M2/P5 design 3.2), arrived
  * at: the switcher leaves with the workspace's shell (M13/P2/S1, decision
  * 771). Its button is the workspace's name after a square avatar of its
- * initial, which only the eye reads (M13/P2/S1).
+ * initial, which only the eye reads (M13/P2/S1). A name cut short has its
+ * whole as its title, on its text (M13 closeout, review A's M13CA-M1); the
+ * menu is as wide as the button at least, wider for a long name, up to 20rem
+ * and the room it has (decision 971).
  */
 export const WorkspaceSwitcher = observer(function WorkspaceSwitcher({ current }: { current: Workspace }) {
   const workspaces = useWorkspaces();
@@ -49,18 +52,25 @@ export const WorkspaceSwitcher = observer(function WorkspaceSwitcher({ current }
           >
             {initialOf(current.name)}
           </span>
-          <span className="min-w-0 truncate">{current.name}</span>
+          <span title={current.name} className="min-w-0 truncate">
+            {current.name}
+          </span>
           <ChevronsUpDown className="ml-auto text-faint" />
         </Button>
       </DropdownMenuTrigger>
       <span id={description} hidden>
         {t("workspace.switch")}
       </span>
-      <DropdownMenuContent align="start" className="w-(--radix-dropdown-menu-trigger-width)">
+      <DropdownMenuContent
+        align="start"
+        className="max-w-[min(20rem,var(--radix-dropdown-menu-content-available-width))] min-w-(--radix-dropdown-menu-trigger-width)"
+      >
         <DropdownMenuRadioGroup value={current.slug} onValueChange={(slug) => void navigate(`/${slug}`)}>
           {workspaces.list?.map((workspace) => (
             <DropdownMenuRadioItem key={workspace.id} value={workspace.slug}>
-              <span className="truncate">{workspace.name}</span>
+              <span title={workspace.name} className="truncate">
+                {workspace.name}
+              </span>
             </DropdownMenuRadioItem>
           ))}
         </DropdownMenuRadioGroup>

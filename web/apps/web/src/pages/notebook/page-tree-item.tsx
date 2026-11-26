@@ -288,7 +288,9 @@ const PageRow = memo(function PageRow({
         ref={row}
         data-active={active || undefined}
         className={cn(
-          "group relative flex h-7.5 items-center gap-1 rounded-row pr-1 text-row text-muted-foreground transition-colors duration-150 hover:bg-hover hover:text-foreground data-active:bg-accent-soft data-active:text-foreground",
+          // Forced colours take the page shown's background away: an outline of the system's colour marks it there (M13
+          // closeout, review A's M13CA-M2, as decision 845 marks the settings' row).
+          "group relative flex h-7.5 items-center gap-1 rounded-row pr-1 text-row text-muted-foreground transition-colors duration-150 hover:bg-hover hover:text-foreground data-active:bg-accent-soft data-active:text-foreground forced-colors:data-active:outline forced-colors:data-active:-outline-offset-1",
           instruction?.operation === "combine" &&
             (instruction.blocked ? "ring-2 ring-destructive" : "ring-2 ring-primary")
         )}
@@ -325,7 +327,9 @@ const PageRow = memo(function PageRow({
           {source && <FileText aria-hidden className={icon} />}
           {/* An ordinary page's (M5-polish 37): its name at 55px, as the Directory and History rows' are. */}
           {!agents && !sourceRoot && !source && <File aria-hidden className={icon} />}
-          {name}
+          {/* Cut short, its whole as its title: on its text, not on the link, whose name it is (M13 closeout, review
+              A's M13CA-M1). */}
+          <span title={name}>{name}</span>
           {(agents || sourceRoot || source) && (
             <>
               {" "}
@@ -357,8 +361,9 @@ const PageRow = memo(function PageRow({
                 context.openMenu(id, event.currentTarget);
               }
             }}
-            // Shown on hover, or always where a pointer is a finger, which does not hover.
-            className="grid size-6 shrink-0 place-items-center rounded-row text-faint opacity-0 group-hover:opacity-100 hover:bg-hover hover:text-foreground focus-visible:opacity-100 aria-expanded:opacity-100 any-pointer-coarse:opacity-100"
+            // Shown on hover, or always where nothing hovers or a finger may point, and in forced colours, as the cog and
+            // a list's row's actions are (decision 966).
+            className="grid size-6 shrink-0 place-items-center rounded-row text-faint opacity-0 group-hover:opacity-100 hover:bg-hover hover:text-foreground focus-visible:opacity-100 aria-expanded:opacity-100 [@media(hover:none)]:opacity-100 any-pointer-coarse:opacity-100 forced-colors:opacity-100"
           >
             <Ellipsis className="size-4" />
           </button>

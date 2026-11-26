@@ -175,7 +175,8 @@ const AccessRow = observer(function AccessRow({ workspace, notebook }: NotebookP
             id={id}
             aria-describedby={`${id}-hint`}
             aria-busy={draft !== undefined || undefined}
-            className="h-7.5 md:text-compact"
+            // Below md the row's whole width, as the name's field is (M13 closeout, decision 970).
+            className="h-7.5 max-md:w-full md:text-compact"
             {...choice}
           >
             {accesses.map((access) => (

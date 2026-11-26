@@ -66,7 +66,7 @@ export const zhCN: Messages = {
   "shell.backToWorkspace": "回到工作区",
   "shell.menu": "导航",
   "workspace.home": "首页",
-  "workspace.settings": "设置",
+  "workspace.settings": "工作区设置",
   "workspace.create": "创建工作区",
   "workspace.switch": "切换工作区",
   "notebooks.mine": "我的笔记本",
