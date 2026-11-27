@@ -6,7 +6,7 @@
 - 前端：React + TypeScript
 - 协议：[AGPL-3.0](LICENSE)
 
-项目处于 v0.1 开发阶段，从 [docs/](docs/README.md) 开始阅读。
+v0.1.0 已发布（[变更记录](CHANGELOG.md)，镜像 `ghcr.io/open-nerve/nervewiki:0.1.0`），部署照 [deploy/README.md](deploy/README.md)；开发文档从 [docs/](docs/README.md) 开始阅读。
 
 ## 开发环境
 
