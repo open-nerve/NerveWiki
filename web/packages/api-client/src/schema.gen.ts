@@ -2210,7 +2210,7 @@ export interface components {
             product: string;
             /**
              * @description Product version of the running build.
-             * @example 0.1.0-dev
+             * @example 0.1.1-dev
              */
             version: string;
             /** @description Git revision of the running build; "unknown" when the build carries no VCS stamp. */

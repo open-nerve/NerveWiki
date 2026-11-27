@@ -34,7 +34,7 @@ COPY server/go.mod server/go.sum ./
 RUN go mod download
 COPY . /src/
 COPY --from=web /src/web/apps/web/dist/ internal/platform/webui/dist/
-ARG VERSION=0.1.0-dev
+ARG VERSION=0.1.1-dev
 # 构建参数与 Makefile 的 build 相同，改一处要同步另一处
 RUN CGO_ENABLED=0 go build -trimpath \
     -ldflags "-X github.com/open-nerve/NerveWiki/server/internal/platform/buildinfo.version=${VERSION}" \
@@ -50,7 +50,7 @@ RUN mkdir /out/data
 # 写成数字（distroless 的 nonroot，uid 65532）：Kubernetes 的 runAsNonRoot 无法核对用户名。
 # 不写 HEALTHCHECK：镜像里没有能发请求的程序，编排系统用 /healthz、/readyz 做探针
 FROM gcr.io/distroless/static-debian13:latest@sha256:1a64f46364620465ef9e9a8f5413757dfdf22695e050bbfd7303eeaf17a59383 AS runtime
-ARG VERSION=0.1.0-dev
+ARG VERSION=0.1.1-dev
 # 提交与它的时间（git log -1 --format=%cI），不是构建的时间：同一个提交重建得到同样的 label。
 # make image 与 release.yml 传它们；直接 docker build 不传时是空的，image-smoke.sh 会失败
 ARG REVISION
