@@ -239,7 +239,64 @@ M12 收尾之后，v0.1 里 `open` 的移交只剩 `M4-pages/handoffs/M0-P1-edit
 
 ## 发布
 
-推 tag 之后写。
+2026-11-26/27（UTC 记 run 的时刻），M13 合并进 `main`（`5d7aa8dc`）之后，照 00 号文档 4.11 与 [P5 设计](../05-P5-deploy-release.md) 3.23 的九步。
+
+### 负责人的回答（2026-11-27）
+
+- **开始发布**：负责人答"Start the release"。
+- **三问一次问全**（4.11 第 2 步）：
+  - `main` 上的 `vuln.yml` 从 2026-11-24 起每天红在 GO-2026-6974（`go.opentelemetry.io/otel/trace` v1.46.0，修在 v1.47.0），闸门的 `make vuln` 会挡住 rc；修法早在本地的分支 `m12-otel-trace`（`8729c4c0`，只改 `server/go.mod`、`go.sum`）。升依赖算改了产品的依赖（4.11"第 2 步的点头盖住什么"），单独问：答"Yes, bring it in"。
+  - 两个 tag 一起问：答"Yes, both tags"（rc 先，`v0.1.0` 在 rc 核对、包设为公开之后）。
+  - 推 rc 之前的设置（00 号文档第 11 节第 3、4、11 项）：答"I'll turn them on"；之后负责人请主持者经 Claude in Chrome 在负责人已登录的浏览器里操作。
+- **包设为公开**（4.11 第 5 步，不能撤回）：主持者问，负责人答"Yes, you do it"。
+- 本机门禁里发布脚本的三个测试在 macOS 的 bash 3.2 下失败一事，负责人此前在 M13 合并进 `main` 时答过"接受，靠 CI"（[M13 收尾记录](../../M13-ui-refresh/reviews/M13-closeout-review.md)"全量门禁"）。
+
+### 推 rc 之前的设置与核对
+
+- **主持者经浏览器做的**（负责人的要求）：
+  - 私密的漏洞报告打开，`gh api repos/open-nerve/NerveWiki/private-vulnerability-reporting` 答 `{"enabled":true}`（决定 712 的条件成立；Dependabot alerts 原来就开着）；
+  - tag 的规则集 `release tags`（id 28190096）：`refs/tags/v*`，限制建、改、删与强推，绕过的是组织管理员与仓库管理员（`gh api …/rulesets/28190096` 核对）；推 tag 的账户是仓库管理员；
+  - immutable releases 打开（设置页重新载入之后仍勾着；令牌读不到这项的接口）。
+- **只读核对**：组织 `open-nerve` 下没有任何包（没有手动推的 `nervewiki`，第 12 项）；组织的 Actions 允许所有 action（第 2 项）；组织的"Package creation"原来只允许 Private，第 6 步之前由主持者勾上 Public。
+- **`main` 的头 `377b7da5`**：`ci.yml` run 45886081481 十九项第一次 attempt 全绿（E2E 一步 9:02）；`release.yml` 的演练 45886081506 绿；`vuln.yml` 45886081368 两项绿：`vuln`，与 `outdated`（改了依赖清单的推送也跑，等于第 1 步要的手动一次）"6 sections, 0 with errors"。过时的照 4.3 都不是安全更新，不升。
+- **actionlint、syft、cosign、BuildKit 的版本**（第 1 步手动核一次）：actionlint v1.7.12 是最新；syft v1.54.0（最新 v1.57.2）、cosign v3.1.4（v3.1.6）、BuildKit v0.34.2（v0.35.1）、`anchore/sbom-action` v0.24.3（v0.24.4）、`sigstore/cosign-installer` v4.1.3（v4.1.4）。各自 2026-09 之后的安全公告都已修在钉的版本里（BuildKit 的 GHSA-2fqp-xg6f-v7gj 修在 v0.34.2、GHSA-w26x-xg27-7qjc 修在 v0.34.1，syft 的 GHSA-mw2c-m758-9v5q 修在 v1.52.0），不升；进 [v0.2 的 `M12-release.md`](../../../v0.2/handoffs/M12-release.md) 第 13 项。
+
+### `m12-release` 上的改动
+
+每一轮从 `main` 开（或快进到 `main`），分支的 CI 绿之后 `--no-ff` 合并：
+
+| 轮 | 提交 | 改了什么 | 分支 | 合并与 `main` |
+|---|---|---|---|---|
+| 1 | `63208670` | OpenTelemetry 1.47.0（GO-2026-6974）：`8729c4c0` 摘过来（`-x`），`otel`、`otel/metric`、`otel/trace` 到 v1.47.0，`otel/log` 随之进图；`nervewiki` 的二进制不链它（`go list -deps ./cmd/nervewiki` 前后相同） | `ci.yml` 45881625429、`release.yml` 45881625516、`vuln.yml` 45881626245 都绿 | `377b7da5`；`ci.yml` 45886081481、`vuln.yml` 45886081368 绿 |
+| 2 | `27d5ec88` | `CHANGELOG.md` 的标题 `## 0.1.0（2026-11-27）`；`README.md:9` 改为已发布的说法 | `ci.yml` 45944877905（E2E 9:31）、演练 45944877902 绿 | `b4a86554`，合并提交单独推上 `main`；`ci.yml` 45948778237（E2E 8:25）、演练 45948778255 绿 |
+| 3 | `bd68dab6` | 默认版本号 `0.1.1-dev`：`Makefile` 的 `VERSION`、`deploy/Dockerfile` 的两个 `ARG`、`buildinfo` 的默认值、`README.md:44`，`instance.yaml` 的示例与 `info.go` 的注释，`make gen` 带出 `api/dist`、`server.gen.go`、`schema.gen.ts`（P5 设计 2.1 第 11 条）；版本号的守卫 `TestTheDefaultVersionIsOneEverywhere` 与 `make gen-check` 过 | `ci.yml` 45952584928（E2E 9:24）、演练 45952584903、`vuln.yml` 45952584952 绿 | `5af5546b`；`ci.yml` 45956897421（E2E 8:38）绿 |
+
+`m12-otel-trace` 的会话（只在本地，没有推送）随之归档。
+
+### `v0.1.0-rc.1`
+
+- tag：带注释的 `v0.1.0-rc.1` 指 `377b7da5`（`main` 的头，有它自己的 `ci.yml` 运行）。
+- `release.yml` run 45889829246（2026-11-26 20:16–20:22 UTC）：`gate`、`build`（amd64、arm64）、`sbom`、`publish`、`draft`、`verify`（amd64、arm64）、`release` 九个作业第一次 attempt 全绿。
+- Release：预发布，2026-11-26T20:22:12Z 公开；说明的第一句是"这是预发布版本 v0.1.0-rc.1，供核对与试用；正式版本是 v0.1.0。"；三个附件 `nervewiki-0.1.0-rc.1-image.spdx.json`、`-web.spdx.json`、`-licenses.tar.gz`；末尾两条校验的命令。
+- 摘要：索引 `sha256:12663a1585dfa597958804da95cef4f1a6d05c0775cb09cf661426b5dc973b6d`；amd64 `sha256:1923a6b6d9eb81e17c5f8f3d10a49bb7b1c49b1925586235d970ca5f1c401276`；arm64 `sha256:ba3816a0f112596f723f2ca60e1c13d493b506b492bfb0f03a02670721f2048f`。
+- `verify` 两个作业：来源证明与两份 SBOM 的证明（`gh attestation verify`）；Signature 一步 cosign 报"The cosign claims were validated / Existence of the claims in the transparency log was verified offline / The code-signing certificate was verified using trusted certificate authority certificates"；镜像冒烟过。
+- **第 6 步**：主持者经浏览器勾上组织的 Public、把包 `nervewiki` 改为公开（2026-11-27）。之后在本机以空的 Docker 配置（不登录）拉 `ghcr.io/open-nerve/nervewiki:0.1.0-rc.1`：拉到索引 `12663a15…` 的 arm64，label 是版本 `0.1.0-rc.1`、提交 `377b7da5`；`gh attestation verify oci://…:0.1.0-rc.1 -R open-nerve/NerveWiki --cert-identity …/release.yml@refs/tags/v0.1.0-rc.1` 过（SLSA provenance v1）。照 `deploy/README.md`"用 `deploy/compose.yaml`"从零装一遍（从 `v0.1.0-rc.1` 取两个文件，草稿目录代替 `/srv/nervewiki`，端口 18080）：迁移到 `00059`，`users create` 建了第一个账户，`readyz` 答 `ok`，`/api/v0/instance` 答 `0.1.0-rc.1`、提交 `377b7da5`，这个账户登录答 200，网页答 200；装完 `down -v` 拆掉。本机没有 cosign，签名以两个 `verify` 作业为准。
+
+### `v0.1.0`
+
+- tag：带注释的 `v0.1.0` 指 `b4a86554`（写日期的合并提交，单独推上 `main`，有它自己的 `ci.yml` 运行 45948778237）。
+- `release.yml` run 45951855934（2026-11-27 06:26–06:32 UTC）：九个作业第一次 attempt 全绿。
+- Release：不是预发布，2026-11-27T06:32:08Z 公开，说明没有"预发布"那一句；三个附件 `nervewiki-0.1.0-image.spdx.json`、`-web.spdx.json`、`-licenses.tar.gz`。
+- 摘要：索引 `sha256:15015631a06c52397351bcb5461d0cdece0de8056ca463abbabfa57f36be70b7`；amd64 `sha256:625b173bf394b99f80b93ac3def14b788ebecf626a51ff95adcf1944128015c1`；arm64 `sha256:17c7986aed326457038a1fc1d3beea77fa6a3a637379281ee89e1acffcc44f08`。
+- `verify` 两个作业同 rc；本机不登录拉 `0.1.0`：arm64，label 版本 `0.1.0`、提交 `b4a86554`；`gh attestation verify` 以 `…/release.yml@refs/tags/v0.1.0` 过。
+
+### GHCR 里留着的
+
+rc 的 `0.1.0-rc.1`、各次的 `sha-<提交>` 与没有 tag 的摘要都不删（删包的版本要负责人的管理员权限）；清不清见 v0.2 的 `M12-release.md` 第 6 项。
+
+### P1/S1 之后 `main` 的 e2e 红过的次数（补）
+
+上面那一节数到 `5f17fd8b`（69 次运行）。之后 `main` 上的 `ci.yml`：`5146e8be` 44933670087、`ceea5249` 44950064835、`3c315037` 44952529981、`5d7aa8dc` 45868296366、`60fff76e` 45876493560、`377b7da5` 45886081481、`b4a86554` 45948778237、`5af5546b` 45956897421，八次都是第一次 attempt，`e2e` 作业都绿。合计 77 次运行，红的仍是上面那 15 次。
 
 ## 人工验收
 
