@@ -12,7 +12,7 @@ const APIVersion = "v0"
 
 // Build identifies the binary an instance runs.
 type Build struct {
-	Version string // product version, e.g. "0.1.0-dev"
+	Version string // product version, e.g. "0.1.1-dev"
 	Commit  string // git revision, "unknown" without a VCS stamp
 }
 

@@ -60,7 +60,7 @@ type InstanceInfo struct {
 
 	// Version Product version of the running build.
 	//
-	// Examples: 0.1.0-dev
+	// Examples: 0.1.1-dev
 	Version string `json:"version"`
 
 	// WorkspaceCreationEnabled Whether accounts may create workspaces (workspace.creation_enabled); when off, the server's administrator creates them.

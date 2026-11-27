@@ -41,7 +41,7 @@ make dev-db   # 先启动开发数据库
 make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；Ctrl-C 优雅停止
 ```
 
-`make build` 构建前端并把它内嵌进 `bin/nervewiki`（版本号取 `VERSION`，默认 `0.1.0-dev`）。`make run` 启动的服务提供上一次 `make build` 复制进去的前端，从未构建时页面路径答 404 并提示；开发前端用 `make web-dev` 或 `make dev`，见下文"前端"。
+`make build` 构建前端并把它内嵌进 `bin/nervewiki`（版本号取 `VERSION`，默认 `0.1.1-dev`）。`make run` 启动的服务提供上一次 `make build` 复制进去的前端，从未构建时页面路径答 404 并提示；开发前端用 `make web-dev` 或 `make dev`，见下文"前端"。
 
 `serve` 启动时要连上数据库（最多等 10 秒，连不上就退出），按配置执行迁移（dev、test 默认执行，prod 默认不执行），然后自检数据库的编码与 locale，不满足就拒绝启动并给出建库命令。它还打开附件目录（`storage.dir`，`make run` 时是 `server/_data/`，不进仓库），不可写就拒绝启动，见 [deploy/README.md](deploy/README.md) 的"配置"；其他命令不碰它。`GET /healthz` 表示进程存活；`GET /readyz` 在数据库可用、迁移已是最新时返回 200，否则 503。`GET /api/v0/instance` 返回产品名、版本、提交与接口版本，以及是否开放注册（`signup_enabled`）、是否开放创建工作区（`workspace_creation_enabled`），单个附件、导入包的上限（`asset_max_bytes`、`import_max_bytes`）与导出保留多久（`export_ttl_seconds`）、回收站里的一项可以恢复多久（`trash_retention_seconds`，保留期减 1 小时）；`/api/` 下没有的路径返回 404 problem+json。
 

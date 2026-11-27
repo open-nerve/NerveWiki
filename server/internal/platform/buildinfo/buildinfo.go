@@ -6,7 +6,7 @@ import "runtime/debug"
 // version is the product version. Release builds override it with
 //
 //	-ldflags "-X github.com/open-nerve/NerveWiki/server/internal/platform/buildinfo.version=<version>"
-var version = "0.1.0-dev"
+var version = "0.1.1-dev"
 
 const unknown = "unknown"
 
