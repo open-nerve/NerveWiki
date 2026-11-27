@@ -3,7 +3,7 @@
 每个版本一节，标题 `## X.Y.Z（发布的日期）`，发布之前写 `## X.Y.Z（未发布）`。发布的闸门（`deploy/release-gate.sh`）认这个写法；
 Release 的说明取这一节（`deploy/release-notes.sh`）。一节里不写相对的链接：它原样进 Release 的说明，在那里相对的链接是坏的。
 
-## 0.1.0（未发布）
+## 0.1.0（2026-11-27）
 
 Nerve Wiki 的第一个版本：团队与 agent 共用的 Markdown wiki，一个 Go 程序加 PostgreSQL，网页内嵌，带 MCP 服务端。
 
